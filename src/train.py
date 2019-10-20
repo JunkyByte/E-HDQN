@@ -1,13 +1,18 @@
 import gym
 import Custom_Env.DimensionalGrid
+import gym_super_mario_bros
+from nes_py.wrappers import JoypadSpace
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from rl.ehdqn import EHDQN
 import logging
 import argparse
 import logger as log
 import numpy as np
 from gym.wrappers import AtariPreprocessing
+from rl.frame_stack import FrameStack
+from rl.custom_wrappers import FixGrayScale, TimeLimit, TimeLimitMario, RepeatAction, ResizeState, ChannelsConcat, LifeLimitMario
 parser = argparse.ArgumentParser()
-logging.basicConfig(format='%(asctime)s;%(levelname)s:%(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
 
 
 def boolean_string(s):
@@ -44,10 +49,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # Setup env
-    env = gym.make(args.env, size=args.size)
-    env = Custom_Env.DimensionalGrid.TimeLimit(env, args.size * 3)
-    #env = AtariPreprocessing(env, noop_max=30, screen_size=64,
-    #                         terminal_on_life_loss=True, grayscale_obs=False)
+    if 'DimGrid' in args.env:
+        env = gym.make(args.env, size=args.size)
+    elif 'Mario' in args.env:
+        env = gym.make(args.env)
+        env = TimeLimitMario(env, time=300)
+        env = LifeLimitMario(env)
+        env = RepeatAction(env, nskip=10)
+        env = ResizeState(env, res=(48, 48), gray=True)
+        env = FrameStack(env, num_stack=4)
+        env = FixGrayScale(env)
+        env = ChannelsConcat(env)
+
     obs = env.reset()
 
     # Setup Model
@@ -81,7 +94,11 @@ if __name__ == '__main__':
 
     train_steps = 0
     tot_succ = 0
+    episode_duration = 0
     for i in range(args.episodes):
+        if i % 5 == 0:
+            logging.info('Episode: %s' % i)
+
         log.TB_LOGGER.step += 1
         obs = env.reset()
 
@@ -96,19 +113,21 @@ if __name__ == '__main__':
             if train_steps % args.train_interval == 0 and train_steps > 0:
                 train_steps = 0
                 dqn.update()
-                log.TB_LOGGER.step += 1
 
             obs = obs_new
+            episode_duration += 1
             if is_terminal:
+                log.TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration)
+                episode_duration = 0
                 break
 
-        episodes_per_epoch = 100
+        episodes_per_epoch = 25
         if i % episodes_per_epoch == 0 and i > 0:
             log.TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / episodes_per_epoch)
             tot_succ = 0
 
-        if i % 1000 == 0:
-            n_eval_episodes = 100
+        if i % 100 == 0:
+            n_eval_episodes = 20
             tot_reward = 0
             for _ in range(n_eval_episodes):
                 obs = env.reset()
@@ -126,3 +145,7 @@ if __name__ == '__main__':
             eval_succ = tot_reward / n_eval_episodes
             logging.info('Mean Reward: %s' % (eval_succ))
             log.TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
+
+        # Save ckpt
+        if i % 100 == 0 and i > 0:
+            dqn.save(i)

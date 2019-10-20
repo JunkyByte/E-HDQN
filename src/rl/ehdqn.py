@@ -5,6 +5,7 @@ from src.rl.memory import Memory
 from torch.nn.functional import mse_loss, cross_entropy
 import settings as sett
 import itertools
+import os
 
 
 class EHDQN:
@@ -87,6 +88,11 @@ class EHDQN:
             params = [self.icm[i].parameters(), self.policy[i].parameters()]
             self.policy_opt.append(torch.optim.Adam(itertools.chain(*params), lr=self.lr))
 
+    def save(self, i):
+        torch.save(self.macro.state_dict(), os.path.join(sett.SAVEPATH, 'Macro_%s.pth' % i))
+        for sub in range(self.n_subpolicy):
+            torch.save(self.policy[sub].state_dict(), os.path.join(sett.SAVEPATH, 'Sub_%s_%s.pth' % (sub, i)))
+
     def act(self, obs, deterministic=False):
         x = torch.from_numpy(obs).float().to(sett.device)
         if self.selected_policy is None or self.curr_time == self.max_time:
@@ -118,6 +124,8 @@ class EHDQN:
     def update(self):
         for i in range(self.train_steps):
             self._update()
+            if self.logger is not None:
+                self.logger.step += 1
 
     def _update(self):
         # First train each sub policy
@@ -140,7 +148,7 @@ class EHDQN:
 
             # Augment rewards with curiosity
             curiosity_rewards = icm.curiosity_rew(state, new_state, action)
-            reward += self.lam * curiosity_rewards
+            reward += self.lam * curiosity_rewards / self.embed_state_dim
 
             # Policy loss
             q = policy(state)[torch.arange(self.bs), action]
