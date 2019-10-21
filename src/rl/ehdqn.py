@@ -66,6 +66,7 @@ class EHDQN:
         self.macro_reward = 0
         self.target_count = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.counter_macro = np.zeros((self.n_subpolicy,), dtype=np.int)
+        self.macro_count = 0
 
         # Create Policies / ICM modules / Memories
         self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch).to(sett.device)
@@ -148,7 +149,7 @@ class EHDQN:
 
             # Augment rewards with curiosity
             curiosity_rewards = icm.curiosity_rew(state, new_state, action)
-            reward += self.lam * curiosity_rewards / self.embed_state_dim
+            reward += self.lam * curiosity_rewards
 
             # Policy loss
             q = policy(state)[torch.arange(self.bs), action]
@@ -206,6 +207,11 @@ class EHDQN:
         self.macro_opt.zero_grad()
         loss.backward()
         self.macro_opt.step()
+
+        self.macro_count += 1
+        if self.macro_count == self.target_interval:
+            self.macro_count = 0
+            self.macro_target.update_target(self.macro)
 
         if self.logger is not None:
             self.logger.log_scalar(tag='Macro Loss', value=loss.cpu().detach().numpy())

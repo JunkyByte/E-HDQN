@@ -30,13 +30,13 @@ class FixGrayScale(gym.Wrapper):
 
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        if isinstance(observation, np.ndarray) and observation.ndim == 3:
+        if isinstance(observation, np.ndarray) and observation.ndim == 2:
             observation = observation[..., np.newaxis]
         return observation, reward, done, info
 
     def reset(self, **kwargs):
         observation = self.env.reset(**kwargs)
-        if isinstance(observation, np.ndarray) and observation.ndim == 3:
+        if isinstance(observation, np.ndarray) and observation.ndim == 2:
             observation = observation[..., np.newaxis]
         return observation
 
@@ -54,10 +54,11 @@ class RepeatAction(gym.Wrapper):
         return observation, reward, done, info
 
 class ResizeState(gym.Wrapper):
-    def __init__(self, env, res=(64, 64), gray=False):
+    def __init__(self, env, res=(64, 64), gray=False, norm=True):
         super(ResizeState, self).__init__(env)
         self.res = res
         self.gray = gray
+        self.norm = norm
 
         low = self.observation_space.low[:res[0], :res[1], :]
         high = self.observation_space.high[:res[0], :res[1], :]
@@ -71,6 +72,8 @@ class ResizeState(gym.Wrapper):
         observation = cv2.resize(observation, self.res)
         if self.gray:
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
+        if self.norm:
+            observation = observation.astype(np.float) / 255
         return observation, reward, done, info
 
     def reset(self, **kwargs):
@@ -78,6 +81,8 @@ class ResizeState(gym.Wrapper):
         observation = cv2.resize(observation, self.res)
         if self.gray:
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
+        if self.norm:
+            observation = observation.astype(np.float) / 255
         return observation
 
 class LifeLimitMario(gym.Wrapper):
@@ -110,11 +115,14 @@ class ChannelsConcat(gym.Wrapper):
         high = self.observation_space.high.reshape(self.shape)
         self.observation_space = Box(low=low, high=high, dtype=self.observation_space.dtype)
 
+    def concat(self, x):
+        return np.concatenate(x, axis=-1)
+
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
         observation = np.array(observation)
-        return observation.reshape(self.shape), reward, done, info
+        return self.concat(observation), reward, done, info
 
     def reset(self, **kwargs):
         observation = np.array(self.env.reset(**kwargs))
-        return observation.reshape(self.shape)
+        return self.concat(observation)

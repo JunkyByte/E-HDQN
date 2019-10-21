@@ -26,7 +26,7 @@ parser.add_argument('--episodes', default=1_000_000, type=int, help='number of e
 parser.add_argument('--gamma', default=0.9, type=float, help='Discount reward factor')
 parser.add_argument('--gamma_macro', default=0.9, type=float, help='Discount reward factor for macro policy')
 parser.add_argument('--hidd_ch', default=128, type=int, help='Number of hidden units per hidden channels')
-parser.add_argument('--lam', default=0.01, type=float, help='Scaler for intrinsic reward')
+parser.add_argument('--lam', default=0.1, type=float, help='Scaler for intrinsic reward')
 parser.add_argument('--embed_state_size', default=128, type=int, help='Number of units for embed representation')
 parser.add_argument('--max_time', default=4, type=int, help='Number of steps per policy')
 parser.add_argument('--n_subpolicy', default=2, type=int, help='Number of sub policies')
@@ -53,12 +53,13 @@ if __name__ == '__main__':
         env = gym.make(args.env, size=args.size)
     elif 'Mario' in args.env:
         env = gym.make(args.env)
-        env = TimeLimitMario(env, time=300)
-        env = LifeLimitMario(env)
+        env = env = JoypadSpace(env, SIMPLE_MOVEMENT)
         env = RepeatAction(env, nskip=10)
-        env = ResizeState(env, res=(48, 48), gray=True)
+        env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
+        #env = LifeLimitMario(env)
+        env = ResizeState(env, res=(56, 56), gray=False, norm=True)
+        #env = FixGrayScale(env)
         env = FrameStack(env, num_stack=4)
-        env = FixGrayScale(env)
         env = ChannelsConcat(env)
 
     obs = env.reset()
