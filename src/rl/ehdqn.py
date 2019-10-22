@@ -108,23 +108,28 @@ class EHDQN:
             x /= 255
 
         if self.selected_policy is None or self.curr_time == self.max_time:
+            if not self.selected_policy is None and not deterministic:
+                # Store non terminal macro transition
+                self.macro_reward /= self.max_time
+                self.macro_memory.store_transition(self.macro_state, obs[0], self.selected_policy, self.macro_reward, False)
+                self.macro_reward = 0
+
+            # Pick macro action
             self.selected_policy = self.pick_policy(x, deterministic=deterministic)
+            if not deterministic:
+                self.macro_state = obs[0]
+
             self.counter_macro[self.selected_policy] += 1
-        self.curr_time += 1
 
         eps = self.eps_sub if not deterministic else 0.025
         action = self.policy[self.selected_policy].act(x, eps=eps)
+        self.curr_time += 1
         return action
 
     def pick_policy(self, obs, deterministic=False):
-        if not deterministic:
-            self.macro_state = obs.cpu().numpy()[0]
-
-        if self.norm_input:
-            obs = obs.float() / 255
-
         eps = self.eps if not deterministic else 0
         cat = True if not deterministic else False
+
         policy = self.macro.act(obs, eps=eps, categorical=cat)
         self.curr_time = 0
         return policy
@@ -143,10 +148,9 @@ class EHDQN:
         self.memory[self.selected_policy].store_transition(s, s1, a, reward, is_terminal)
         self.macro_reward += reward
 
-        # Store macro experience
-        if self.curr_time == self.max_time or is_terminal:
+        # Store terminal macro transition
+        if is_terminal:
             self.macro_reward /= self.max_time
-            print(hash(str(self.macro_state)), hash(str(s1)), is_terminal, self.curr_time == self.max_time)
             self.macro_memory.store_transition(self.macro_state, s1, self.selected_policy, self.macro_reward, is_terminal)
             self.macro_reward = 0
             if is_terminal:

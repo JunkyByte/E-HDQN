@@ -32,9 +32,9 @@ parser.add_argument('--max_time', default=4, type=int, help='Number of steps per
 parser.add_argument('--n_subpolicy', default=2, type=int, help='Number of sub policies')
 parser.add_argument('--lr', default=1e-3, type=float, help='Learning rate for agent training')
 parser.add_argument('--eps', default=0.5, type=float, help='Chance of taking random action')
-parser.add_argument('--eps_decay', default=4e-5, type=float, help='Decay for macro eps')
+parser.add_argument('--eps_decay', default=2e-5, type=float, help='Decay for macro eps')
 parser.add_argument('--eps_sub', default=0.5, type=float, help='Chance of taking random action for sub policy')
-parser.add_argument('--eps_sub_decay', default=4e-5, type=float, help='Decay for sub policy eps')
+parser.add_argument('--eps_sub_decay', default=2e-5, type=float, help='Decay for sub policy eps')
 parser.add_argument('--bs', default=32, type=int, help='Batch size')
 parser.add_argument('--train_interval', default=5, type=int, help='Steps of env before training')
 parser.add_argument('--train_steps', default=1, type=int, help='Steps of training')
@@ -130,7 +130,7 @@ if __name__ == '__main__':
             tot_succ = 0
 
         if i % 100 == 0:
-            n_eval_episodes = 1
+            n_eval_episodes = 10
             tot_reward = 0
             for _ in range(n_eval_episodes):
                 obs = env.reset()
