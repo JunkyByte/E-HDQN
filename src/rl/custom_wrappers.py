@@ -54,11 +54,10 @@ class RepeatAction(gym.Wrapper):
         return observation, reward, done, info
 
 class ResizeState(gym.Wrapper):
-    def __init__(self, env, res=(64, 64), gray=False, norm=True):
+    def __init__(self, env, res=(64, 64), gray=False):
         super(ResizeState, self).__init__(env)
         self.res = res
         self.gray = gray
-        self.norm = norm
 
         low = self.observation_space.low[:res[0], :res[1], :]
         high = self.observation_space.high[:res[0], :res[1], :]
@@ -72,8 +71,6 @@ class ResizeState(gym.Wrapper):
         observation = cv2.resize(observation, self.res)
         if self.gray:
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
-        if self.norm:
-            observation = observation.astype(np.float) / 255
         return observation, reward, done, info
 
     def reset(self, **kwargs):
@@ -81,8 +78,6 @@ class ResizeState(gym.Wrapper):
         observation = cv2.resize(observation, self.res)
         if self.gray:
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
-        if self.norm:
-            observation = observation.astype(np.float) / 255
         return observation
 
 class LifeLimitMario(gym.Wrapper):

@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import numpy as np
+from torch.distributions import Categorical
 
 
 class DDQN_Model(nn.Module):
@@ -12,9 +13,9 @@ class DDQN_Model(nn.Module):
 
         if conv:
             self.features = nn.Sequential(
-                nn.Conv2d(state_size[0], 32, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(state_size[0], 64, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
             )
         else:
@@ -42,10 +43,14 @@ class DDQN_Model(nn.Module):
         value = self.value(x)
         return value + (adv - adv.mean(-1, keepdim=True))
 
-    def act(self, state, eps):
+    def act(self, state, eps, categorical=False):
         if np.random.random() > eps:
-            q = self.forward(state)
-            action = torch.argmax(q, dim=-1).cpu().data.numpy()
+            if categorical:
+                q = self.forward(state)
+                action = Categorical(logits=q).sample().cpu().data.numpy()
+            else:
+                q = self.forward(state)
+                action = torch.argmax(q, dim=-1).cpu().data.numpy()
         else:
             action = np.random.randint(self.action_size, size=1 if len(state.shape) == 1 else state.shape[0])
         return action.item()
@@ -72,11 +77,11 @@ class ICM_Model(nn.Module):
         # Projection
         if conv:
             self.phi = nn.Sequential(
-                nn.Conv2d(self.state_size[0], 32, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(self.state_size[0], 64, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             )
         else:

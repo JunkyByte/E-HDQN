@@ -33,9 +33,11 @@ class Memory:
 
     def sample(self, bs):
         idx = np.random.randint(len(self.state), size=bs)
-        state = np.array(self.state)[idx]
-        new_state = np.array(self.new_state)[idx]
-        action = np.array(self.action)[idx]
-        reward = np.array(self.reward)[idx]
-        is_terminal = 1 - np.array(self.is_terminal, dtype=np.int)[idx]
+        state, new_state, action, reward, is_terminal = [], [], [], [], []
+        for i in idx:
+            state.append(self.state[i])
+            new_state.append(self.new_state[i])
+            action.append(self.action[i])
+            reward.append(self.reward[i])
+            is_terminal.append(1 - int(self.is_terminal[i]))
         return state, new_state, action, reward, is_terminal

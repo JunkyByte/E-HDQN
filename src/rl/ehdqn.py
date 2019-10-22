@@ -2,15 +2,16 @@ import numpy as np
 import torch
 from src.rl.model import DDQN_Model, ICM_Model
 from src.rl.memory import Memory
-from torch.nn.functional import mse_loss, cross_entropy
+from torch.nn.functional import mse_loss, cross_entropy, smooth_l1_loss
 import settings as sett
 import itertools
 import os
 
 
 class EHDQN:
-    def __init__(self, state_dim, embed_state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam,
-                 lr, eps, eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, conv, gamma_macro, logger=None):
+    def __init__(self, state_dim, embed_state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam, lr, eps,
+                 eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, conv, gamma_macro,
+                 reward_rescale, norm_input=True, logger=None):
         """
         :param state_dim: Shape of the state
         :param int embed_state_dim: Length of the embed state
@@ -62,6 +63,8 @@ class EHDQN:
         self.macro_state = None
         self.max_time = max_time
         self.train_steps = train_steps
+        self.reward_rescale = reward_rescale
+        self.norm_input = norm_input
         self.curr_time = 0
         self.macro_reward = 0
         self.target_count = np.zeros((self.n_subpolicy,), dtype=np.int)
@@ -94,29 +97,56 @@ class EHDQN:
         for sub in range(self.n_subpolicy):
             torch.save(self.policy[sub].state_dict(), os.path.join(sett.SAVEPATH, 'Sub_%s_%s.pth' % (sub, i)))
 
+    def load(self, path, i):
+        self.macro.load_state_dict(torch.load(os.path.join(path, 'Macro_%s.pth' % i), map_location=sett.device))
+        for sub in range(self.n_subpolicy):
+            self.policy[sub].load_state_dict(torch.load(os.path.join(path, 'Sub_%s_%s.pth' % (sub, i)), map_location=sett.device))
+
     def act(self, obs, deterministic=False):
         x = torch.from_numpy(obs).float().to(sett.device)
+        if self.norm_input:
+            x /= 255
+
         if self.selected_policy is None or self.curr_time == self.max_time:
-            self.selected_policy = self.pick_policy(x)
+            self.selected_policy = self.pick_policy(x, deterministic=deterministic)
             self.counter_macro[self.selected_policy] += 1
         self.curr_time += 1
-        eps = self.eps_sub if not deterministic else 0
+
+        eps = self.eps_sub if not deterministic else 0.025
         action = self.policy[self.selected_policy].act(x, eps=eps)
         return action
 
-    def pick_policy(self, obs):
-        self.macro_state = obs.cpu().numpy()[0]
-        policy = self.macro.act(obs, eps=self.eps)
+    def pick_policy(self, obs, deterministic=False):
+        if not deterministic:
+            self.macro_state = obs.cpu().numpy()[0]
+
+        if self.norm_input:
+            obs = obs.float() / 255
+
+        eps = self.eps if not deterministic else 0
+        cat = True if not deterministic else False
+        policy = self.macro.act(obs, eps=eps, categorical=cat)
         self.curr_time = 0
         return policy
 
     def store_transition(self, s, s1, a, reward, is_terminal):
+        # Rescale reward if a scaling is provided
+        if self.reward_rescale != 0:
+            if self.reward_rescale == 1:
+                reward = np.sign(reward)
+            elif self.reward_rescale == 2:
+                reward = max(-1, min(1, reward))
+            else:
+                reward *= self.reward_rescale
+
         # Store sub policy experience
         self.memory[self.selected_policy].store_transition(s, s1, a, reward, is_terminal)
         self.macro_reward += reward
 
         # Store macro experience
         if self.curr_time == self.max_time or is_terminal:
+            self.macro_reward /= self.max_time
+            print(hash(str(self.macro_state)), hash(str(s1)), is_terminal, self.curr_time == self.max_time)
             self.macro_memory.store_transition(self.macro_state, s1, self.selected_policy, self.macro_reward, is_terminal)
             self.macro_reward = 0
             if is_terminal:
@@ -132,7 +162,7 @@ class EHDQN:
         # First train each sub policy
         for i in range(self.n_subpolicy):
             memory = self.memory[i]
-            if len(memory.state) < self.bs:
+            if len(memory.state) < self.bs * 10:
                 continue
 
             policy = self.policy[i]
@@ -141,6 +171,10 @@ class EHDQN:
             policy_opt = self.policy_opt[i]
 
             state, new_state, action, reward, is_terminal = memory.sample(self.bs)
+            if self.norm_input:
+                state = np.array(state, dtype=np.float) / 255
+                new_state = np.array(new_state, dtype=np.float) / 255
+
             state = torch.tensor(state, dtype=torch.float).detach().to(sett.device)
             new_state = torch.tensor(new_state, dtype=torch.float).detach().to(sett.device)
             action = torch.tensor(action).detach().to(sett.device)
@@ -155,7 +189,7 @@ class EHDQN:
             q = policy(state)[torch.arange(self.bs), action]
             max_action = torch.argmax(policy(new_state), dim=1)
             y = reward + self.gamma * target(new_state)[torch.arange(self.bs), max_action] * is_terminal
-            policy_loss = mse_loss(input=q, target=y.detach())
+            policy_loss = smooth_l1_loss(input=q, target=y.detach())
 
             # ICM Loss
             phi_hat = icm(state, action)
@@ -168,6 +202,8 @@ class EHDQN:
             loss = self.tau * policy_loss + (1 - self.beta) * inv_loss + self.beta * fwd_loss
             policy_opt.zero_grad()
             loss.backward()
+            for param in policy.parameters():
+                param.grad.data.clamp(-1, 1)
             policy_opt.step()
 
             self.target_count[i] += 1
@@ -186,13 +222,17 @@ class EHDQN:
         self.eps_sub = self.eps_sub * self.eps_sub_decay
 
         # Train Macro policy
-        if len(self.macro_memory.state) < self.bs:
+        if len(self.macro_memory.state) < self.bs * 10:
             return
 
         # Reduce eps
         self.eps = self.eps * self.eps_decay
 
         state, new_state, action, reward, is_terminal = self.macro_memory.sample(self.bs)
+        if self.norm_input:
+            state = np.array(state, dtype=np.float) / 255
+            new_state = np.array(new_state, dtype=np.float) / 255
+
         state = torch.tensor(state, dtype=torch.float).detach().to(sett.device)
         new_state = torch.tensor(new_state, dtype=torch.float).detach().to(sett.device)
         action = torch.tensor(action).detach().to(sett.device)
@@ -202,10 +242,12 @@ class EHDQN:
         q = self.macro(state)[torch.arange(self.bs), action]
         max_action = torch.argmax(self.macro(new_state), dim=1)
         y = reward + self.gamma_macro * self.macro_target(new_state)[torch.arange(self.bs), max_action] * is_terminal
-        loss = mse_loss(input=q, target=y.detach())
+        loss = smooth_l1_loss(input=q, target=y.detach())
 
         self.macro_opt.zero_grad()
         loss.backward()
+        for param in self.macro.parameters():
+            param.grad.data.clamp(-1, 1)
         self.macro_opt.step()
 
         self.macro_count += 1

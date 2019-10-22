@@ -1,3 +1,4 @@
+import time
 import gym
 import Custom_Env.DimensionalGrid
 import gym_super_mario_bros
@@ -6,7 +7,6 @@ from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from rl.ehdqn import EHDQN
 import logging
 import argparse
-import logger as log
 import numpy as np
 from gym.wrappers import AtariPreprocessing
 from rl.frame_stack import FrameStack
@@ -22,6 +22,8 @@ def boolean_string(s):
 
 
 parser.add_argument('--env', default='DimGrid-v0', type=str, help='Environment name')
+parser.add_argument('--ckpt', default='./', type=str, help='Ckpt path')
+parser.add_argument('--step', default=-1, type=int, help='Ckpt step value')
 parser.add_argument('--episodes', default=1_000_000, type=int, help='number of episodes')
 parser.add_argument('--gamma', default=0.9, type=float, help='Discount reward factor')
 parser.add_argument('--gamma_macro', default=0.9, type=float, help='Discount reward factor for macro policy')
@@ -32,18 +34,18 @@ parser.add_argument('--max_time', default=4, type=int, help='Number of steps per
 parser.add_argument('--n_subpolicy', default=2, type=int, help='Number of sub policies')
 parser.add_argument('--lr', default=1e-3, type=float, help='Learning rate for agent training')
 parser.add_argument('--eps', default=0.5, type=float, help='Chance of taking random action')
-parser.add_argument('--eps_decay', default=4e-5, type=float, help='Decay for macro eps')
+parser.add_argument('--eps_decay', default=1e-4, type=float, help='Decay for macro eps')
 parser.add_argument('--eps_sub', default=0.5, type=float, help='Chance of taking random action for sub policy')
-parser.add_argument('--eps_sub_decay', default=4e-5, type=float, help='Decay for sub policy eps')
+parser.add_argument('--eps_sub_decay', default=1e-4, type=float, help='Decay for sub policy eps')
 parser.add_argument('--bs', default=32, type=int, help='Batch size')
 parser.add_argument('--train_interval', default=5, type=int, help='Steps of env before training')
 parser.add_argument('--train_steps', default=1, type=int, help='Steps of training')
 parser.add_argument('--target_int', default=100, type=int, help='Steps of training to update target network in dueling arch.')
-parser.add_argument('--max_memory', default=100_000, type=int, help='Max memory')
+parser.add_argument('--max_memory', default=50_000, type=int, help='Max memory')
 parser.add_argument('--size', default=20, type=int, help='Size for DimGrid environment')
 parser.add_argument('--tau', default=0.01, type=float, help='Weight for agent loss')
 parser.add_argument('--beta', default=0.2, type=float, help='Weight for fwd vs inv icm loss')
-parser.add_argument('--reward_rescale', default=0., type=float, help='Reward rescaling: 0 -> Id, 1 -> sign(R), 2 -> [-1;1], float -> Rew * mult')
+parser.add_argument('--reward_rescale', default=0., type=float, help='Reward rescaling: 0 -> Id, 1 -> sign(R), float -> Rew * mult')
 
 
 if __name__ == '__main__':
@@ -56,10 +58,10 @@ if __name__ == '__main__':
         env = gym.make(args.env)
         env = env = JoypadSpace(env, SIMPLE_MOVEMENT)
         env = RepeatAction(env, nskip=6)
-        #env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
+        env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
         #env = LifeLimitMario(env)
-        env = ResizeState(env, res=(48, 48), gray=True)
-        env = FixGrayScale(env)
+        env = ResizeState(env, res=(48, 48), gray=False)
+        #env = FixGrayScale(env)
         env = FrameStack(env, num_stack=4)
         env = ChannelsConcat(env)
 
@@ -90,65 +92,26 @@ if __name__ == '__main__':
                 train_steps=args.train_steps,
                 max_memory=args.max_memory,
                 conv=conv,
-                gamma_macro=args.gamma_macro,
                 reward_rescale=args.reward_rescale,
-                logger=log.TB_LOGGER
+                gamma_macro=args.gamma_macro
                 )
 
-    train_steps = 0
-    tot_succ = 0
-    episode_duration = 0
-    for i in range(args.episodes):
-        if i % 5 == 0:
-            logging.info('Episode: %s' % i)
+    # Load model
+    dqn.load(args.ckpt, i=args.step)
 
-        log.TB_LOGGER.step += 1
+    while True:
+        tot_reward = 0
         obs = env.reset()
-
         while True:
-            action = dqn.act(obs[np.newaxis])
+            action = dqn.act(obs[np.newaxis], deterministic=True)
             obs_new, r, is_terminal, _ = env.step(action)
 
-            tot_succ += r
-            dqn.store_transition(obs, obs_new, action, r, is_terminal)
-
-            train_steps += 1
-            if train_steps % args.train_interval == 0 and train_steps > 0:
-                train_steps = 0
-                dqn.update()
-
+            env.render()
+            time.sleep(1e-2)
+            tot_reward += r
             obs = obs_new
-            episode_duration += 1
+
             if is_terminal:
-                log.TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration)
-                episode_duration = 0
                 break
 
-        episodes_per_epoch = 50
-        if i % episodes_per_epoch == 0 and i > 0:
-            log.TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / episodes_per_epoch)
-            tot_succ = 0
-
-        if i % 100 == 0:
-            n_eval_episodes = 1
-            tot_reward = 0
-            for _ in range(n_eval_episodes):
-                obs = env.reset()
-                while True:
-                    action = dqn.act(obs[np.newaxis], deterministic=True)
-                    obs_new, r, is_terminal, _ = env.step(action)
-
-                    #env.render()
-                    tot_reward += r
-                    obs = obs_new
-
-                    if is_terminal:
-                        break
-
-            eval_succ = tot_reward / n_eval_episodes
-            logging.info('Mean Reward: %s' % (eval_succ))
-            log.TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
-
-        # Save ckpt
-        if i % 100 == 0 and i > 0:
-            dqn.save(i)
+        logging.info('Reward: %s' % (tot_reward))
