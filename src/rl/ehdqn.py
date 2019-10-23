@@ -10,8 +10,8 @@ import os
 
 class EHDQN:
     def __init__(self, state_dim, embed_state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam, lr, eps,
-                 eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, conv, gamma_macro,
-                 reward_rescale, norm_input=True, logger=None):
+                 eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, max_memory_sub,
+                 conv, gamma_macro, reward_rescale, norm_input=True, logger=None):
         """
         :param state_dim: Shape of the state
         :param int embed_state_dim: Length of the embed state
@@ -83,7 +83,7 @@ class EHDQN:
             self.policy.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch).to(sett.device))
             self.target.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch).to(sett.device))
             self.target[-1].update_target(self.policy[-1])
-            self.memory.append(Memory(max_memory))
+            self.memory.append(Memory(max_memory_sub))
 
             # Create ICM modules
             self.icm.append(ICM_Model(self.state_dim, self.embed_state_dim, self.action_dim, conv, hidd_ch).to(sett.device))
@@ -121,13 +121,13 @@ class EHDQN:
 
             self.counter_macro[self.selected_policy] += 1
 
-        eps = self.eps_sub if not deterministic else 0.025
+        eps = max(0.01, self.eps_sub) if not deterministic else 0.01
         action = self.policy[self.selected_policy].act(x, eps=eps)
         self.curr_time += 1
         return action
 
     def pick_policy(self, obs, deterministic=False):
-        eps = self.eps if not deterministic else 0
+        eps = max(0.01, self.eps) if not deterministic else 0.01
         cat = True if not deterministic else False
 
         policy = self.macro.act(obs, eps=eps, categorical=cat)
