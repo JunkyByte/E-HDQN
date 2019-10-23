@@ -13,9 +13,9 @@ class DDQN_Model(nn.Module):
 
         if conv:
             self.features = nn.Sequential(
-                nn.Conv2d(state_size[0], 64, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(state_size[0], 32, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
             )
         else:
@@ -77,11 +77,11 @@ class ICM_Model(nn.Module):
         # Projection
         if conv:
             self.phi = nn.Sequential(
-                nn.Conv2d(self.state_size[0], 64, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(self.state_size[0], 32, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             )
         else:

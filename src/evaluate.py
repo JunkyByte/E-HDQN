@@ -60,8 +60,8 @@ if __name__ == '__main__':
         env = RepeatAction(env, nskip=6)
         env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
         #env = LifeLimitMario(env)
-        env = ResizeState(env, res=(48, 48), gray=False)
-        #env = FixGrayScale(env)
+        env = ResizeState(env, res=(48, 48), gray=True)
+        env = FixGrayScale(env)
         env = FrameStack(env, num_stack=4)
         env = ChannelsConcat(env)
 
@@ -104,10 +104,12 @@ if __name__ == '__main__':
         obs = env.reset()
         while True:
             action = dqn.act(obs[np.newaxis], deterministic=True)
+            logging.info('Policy: %s Action %s' % (dqn.selected_policy, action))
             obs_new, r, is_terminal, _ = env.step(action)
 
             env.render()
             time.sleep(1e-2)
+
             tot_reward += r
             obs = obs_new
 
@@ -115,3 +117,4 @@ if __name__ == '__main__':
                 break
 
         logging.info('Reward: %s' % (tot_reward))
+        time.sleep(1)
