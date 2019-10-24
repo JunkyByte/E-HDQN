@@ -17,7 +17,7 @@ def create_environment(env_name, **kwargs):
         env = RepeatAction(env, nskip=6)
         # env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
         # env = LifeLimitMario(env)
-        env = ResizeState(env, res=(84, 84), gray=True)
+        env = ResizeState(env, res=(64, 64), gray=True)
         env = FixGrayScale(env)
         env = FrameStack(env, num_stack=4)
         env = ChannelsConcat(env)

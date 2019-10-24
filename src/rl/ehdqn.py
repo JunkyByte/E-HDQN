@@ -134,6 +134,11 @@ class EHDQN:
         self.curr_time = 0
         return policy
 
+    def set_mode(self, training=False):
+        for policy in self.policy:
+            policy.train(training)
+        self.macro.train(training)
+
     def store_transition(self, s, s1, a, reward, is_terminal):
         # Rescale reward if a scaling is provided
         if self.reward_rescale != 0:

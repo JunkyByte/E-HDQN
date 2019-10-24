@@ -81,6 +81,7 @@ if __name__ == '__main__':
             tot_succ = 0
 
         if i % 100 == 0:
+            dqn.set_mode(training=False)
             n_eval_episodes = 20
             tot_reward = 0
             for _ in range(n_eval_episodes):
@@ -99,6 +100,7 @@ if __name__ == '__main__':
             eval_succ = tot_reward / n_eval_episodes
             logging.info('Mean Reward: %s' % (eval_succ))
             log.TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
+            dqn.set_mode(training=True)
 
         # Save ckpt
         if i % 100 == 0 and i > 0:
