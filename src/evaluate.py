@@ -48,6 +48,7 @@ if __name__ == '__main__':
 
     # Load model
     dqn.load(args.ckpt, i=args.step)
+    dqn.set_mode(training=False)
 
     while True:
         tot_reward = 0
