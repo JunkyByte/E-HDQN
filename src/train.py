@@ -1,9 +1,10 @@
 from rl.ehdqn import EHDQN
 from environment_manager import create_environment
 import logging
-import logger as log
 import numpy as np
 import parser
+from tensorboard_logging import Logger
+import settings as sett
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
 
 
@@ -11,7 +12,11 @@ if __name__ == '__main__':
     args = parser.args.parse_args()
 
     # Setup env
-    env = create_environment(args.env, size=args.size)
+    env = create_environment(args.env, n_env=args.n_proc, size=args.size)
+
+    # Logger
+    TB_LOGGER = Logger(sett.LOGPATH)
+    print('Torch Device: %s' % sett.device)
 
     obs = env.reset()
 
@@ -41,65 +46,82 @@ if __name__ == '__main__':
                 max_memory=args.max_memory,
                 max_memory_sub=args.max_memory_sub,
                 conv=conv,
+                n_proc=args.n_proc,
                 gamma_macro=args.gamma_macro,
                 reward_rescale=args.reward_rescale,
-                logger=log.TB_LOGGER
+                logger=TB_LOGGER
                 )
 
     train_steps = 0
     tot_succ = 0
-    episode_duration = 0
-    for i in range(args.episodes):
-        if i % 5 == 0:
-            logging.info('Episode: %s' % i)
+    episodes_per_epoch = 50
+    episode_duration = np.zeros((args.n_proc,), dtype=np.int)
+    remotes = env._get_target_remotes(range(args.n_proc))
+    total_episodes = 0
+    i = 0
+    for _ in range(args.episodes // episodes_per_epoch):
 
-        log.TB_LOGGER.step += 1
+        TB_LOGGER.step += 1
         obs = env.reset()
 
+        i = 0
         while True:
-            action = dqn.act(obs[np.newaxis])
+            action = dqn.act(obs)
             obs_new, r, is_terminal, _ = env.step(action)
 
-            tot_succ += r
+            tot_succ += sum(r)
             dqn.store_transition(obs, obs_new, action, r, is_terminal)
 
             train_steps += 1
-            if train_steps % args.train_interval == 0 and train_steps > 0:
+            if train_steps % max(1, args.train_interval // args.n_proc) == 0 and train_steps > 0:
                 train_steps = 0
                 dqn.update()
 
             obs = obs_new
             episode_duration += 1
-            if is_terminal:
-                log.TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration)
-                episode_duration = 0
+            for j, terminal in enumerate(is_terminal):
+                if terminal:
+                    TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration[j])
+                    episode_duration[j] = 0
+                    remotes[j].send(('reset', None))
+                    obs[j] = remotes[j].recv()
+                    i += 1
+                    total_episodes += 1
+                    if total_episodes % 5 == 0:
+                        logging.info('Simulated %s episodes' % total_episodes)
+
+            if i > episodes_per_epoch:
                 break
 
-        episodes_per_epoch = 75
-        if i % episodes_per_epoch == 0 and i > 0:
-            log.TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / episodes_per_epoch)
-            tot_succ = 0
+        TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / i)
+        tot_succ = 0
 
-        if i % 100 == 0:
-            n_eval_episodes = 20
-            tot_reward = 0
-            for _ in range(n_eval_episodes):
-                obs = env.reset()
-                while True:
-                    action = dqn.act(obs[np.newaxis], deterministic=True)
-                    obs_new, r, is_terminal, _ = env.step(action)
+        dqn.set_mode(training=False)
+        n_eval_episodes = 25
+        tot_reward = np.zeros((args.n_proc,), dtype=np.int)
+        cumulative_reward = 0
+        counter = 0
+        obs = env.reset()
+        while counter < n_eval_episodes:
+            action = dqn.act(obs, deterministic=True)
+            obs_new, r, is_terminal, _ = env.step(action)
 
-                    #env.render()
-                    tot_reward += r
-                    obs = obs_new
+            #env.render()
+            tot_reward += r
+            obs = obs_new
 
-                    if is_terminal:
-                        break
+            for j, terminal in enumerate(is_terminal):
+                if terminal:
+                    remotes[j].send(('reset', None))
+                    obs[j] = remotes[j].recv()
+                    cumulative_reward += tot_reward[j]
+                    tot_reward[j] = 0
+                    counter += 1
 
-            eval_succ = tot_reward / n_eval_episodes
-            logging.info('Mean Reward: %s' % (eval_succ))
-            log.TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
+        eval_succ = cumulative_reward / counter
+        logging.info('Mean Reward: %s' % (eval_succ))
+        TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
+        dqn.set_mode(training=True)
 
         # Save ckpt
-        if i % 100 == 0 and i > 0:
-            dqn.save(i)
+        dqn.save(total_episodes)

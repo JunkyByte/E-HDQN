@@ -59,7 +59,7 @@ class DDQN_Model(nn.Module):
                 action = torch.argmax(q, dim=-1).cpu().data.numpy()
         else:
             action = np.random.randint(self.action_size, size=1 if len(state.shape) == 1 else state.shape[0])
-        return action.item()
+        return action.item() if action.shape == (1,) else list(action.astype(np.int))
 
     def update_target(self, model):
         self.load_state_dict(model.state_dict())

@@ -11,7 +11,7 @@ import os
 class EHDQN:
     def __init__(self, state_dim, embed_state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam, lr, eps,
                  eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, max_memory_sub,
-                 conv, gamma_macro, reward_rescale, norm_input=True, logger=None):
+                 conv, gamma_macro, reward_rescale, n_proc, norm_input=True, logger=None):
         """
         :param state_dim: Shape of the state
         :param int embed_state_dim: Length of the embed state
@@ -59,14 +59,15 @@ class EHDQN:
         self.beta = beta
         self.lam = lam
 
-        self.selected_policy = None
-        self.macro_state = None
+        self.n_proc = n_proc
+        self.selected_policy = np.full((self.n_proc,), fill_value=None)
+        self.macro_state = np.full((self.n_proc,), fill_value=None)
         self.max_time = max_time
         self.train_steps = train_steps
         self.reward_rescale = reward_rescale
         self.norm_input = norm_input
-        self.curr_time = 0
-        self.macro_reward = 0
+        self.curr_time = np.zeros((self.n_proc, ), dtype=np.int)
+        self.macro_reward = np.zeros((self.n_proc,), dtype=np.int)
         self.target_count = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.counter_macro = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.macro_count = 0
@@ -107,23 +108,31 @@ class EHDQN:
         if self.norm_input:
             x /= 255
 
-        if self.selected_policy is None or self.curr_time == self.max_time:
-            if not self.selected_policy is None and not deterministic:
-                # Store non terminal macro transition
-                self.macro_reward /= self.max_time
-                self.macro_memory.store_transition(self.macro_state, obs[0], self.selected_policy, self.macro_reward, False)
-                self.macro_reward = 0
+        for i, sel_policy, curr_time in zip(range(self.n_proc), self.selected_policy, self.curr_time):
+            if sel_policy is None or curr_time == self.max_time:
+                if not sel_policy is None and not deterministic:
+                    # Store non terminal macro transition
+                    self.macro_reward[i] /= self.max_time
+                    self.macro_memory.store_transition(self.macro_state[i], obs[i], sel_policy, self.macro_reward[i], False)
+                    self.macro_reward[i] = 0
 
-            # Pick macro action
-            self.selected_policy = self.pick_policy(x, deterministic=deterministic)
-            if not deterministic:
-                self.macro_state = obs[0]
+                # Pick macro action
+                self.selected_policy[i] = self.pick_policy(x[i][None], deterministic=deterministic)
+                assert isinstance(self.selected_policy[i], int)
+                self.curr_time[i] = 0
+                if not deterministic:
+                    self.macro_state[i] = obs[i]
 
-            self.counter_macro[self.selected_policy] += 1
+                self.counter_macro[sel_policy] += 1
 
         eps = max(0.01, self.eps_sub) if not deterministic else 0.01
-        action = self.policy[self.selected_policy].act(x, eps=eps)
-        self.curr_time += 1
+        sel_pol = np.unique(self.selected_policy)
+        sel_indices = [(self.selected_policy == i).nonzero()[0] for i in sel_pol]
+        action = -np.ones((self.n_proc,), dtype=np.int)
+        for policy_idx, indices in zip(sel_pol, sel_indices):
+            action[indices] = self.policy[policy_idx].act(x[indices], eps=eps)
+
+        self.curr_time += 1  # Is a vector
         return action
 
     def pick_policy(self, obs, deterministic=False):
@@ -131,8 +140,12 @@ class EHDQN:
         cat = True if not deterministic else False
 
         policy = self.macro.act(obs, eps=eps, categorical=cat)
-        self.curr_time = 0
         return policy
+
+    def set_mode(self, training=False):
+        for policy in self.policy:
+            policy.train(training)
+        self.macro.train(training)
 
     def store_transition(self, s, s1, a, reward, is_terminal):
         # Rescale reward if a scaling is provided
@@ -140,21 +153,21 @@ class EHDQN:
             if self.reward_rescale == 1:
                 reward = np.sign(reward)
             elif self.reward_rescale == 2:
-                reward = max(-1, min(1, reward))
+                reward = np.clip(reward, -1, 1)
             else:
                 reward *= self.reward_rescale
 
-        # Store sub policy experience
-        self.memory[self.selected_policy].store_transition(s, s1, a, reward, is_terminal)
-        self.macro_reward += reward
+        for i, sel_policy in enumerate(self.selected_policy):
+            # Store sub policy experience
+            self.memory[sel_policy].store_transition(s[i], s1[i], a[i], reward[i], is_terminal[i])
+            self.macro_reward[i] += reward[i]
 
-        # Store terminal macro transition
-        if is_terminal:
-            self.macro_reward /= self.max_time
-            self.macro_memory.store_transition(self.macro_state, s1, self.selected_policy, self.macro_reward, is_terminal)
-            self.macro_reward = 0
-            if is_terminal:
-                self.selected_policy = None
+            # Store terminal macro transition
+            if is_terminal[i]:
+                self.macro_reward[i] /= self.max_time
+                self.macro_memory.store_transition(self.macro_state[i], s1[i], sel_policy, self.macro_reward[i], is_terminal[i])
+                self.macro_reward[i] = 0
+                self.selected_policy[i] = None
 
     def update(self):
         for i in range(self.train_steps):
