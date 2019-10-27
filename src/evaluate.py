@@ -37,6 +37,7 @@ if __name__ == '__main__':
                 eps_sub_decay=args.eps_sub_decay,
                 beta=args.beta,
                 bs=args.bs,
+                n_proc=1,
                 target_interval=args.target_int,
                 train_steps=args.train_steps,
                 max_memory=args.max_memory,
@@ -54,14 +55,14 @@ if __name__ == '__main__':
         tot_reward = 0
         obs = env.reset()
         while True:
-            action = dqn.act(obs[np.newaxis], deterministic=True)
+            action = dqn.act(obs, deterministic=True)
             logging.info('Policy: %s Action %s' % (dqn.selected_policy, action))
             obs_new, r, is_terminal, _ = env.step(action)
 
             env.render()
             time.sleep(1e-2)
 
-            tot_reward += r
+            tot_reward += r[0]
             obs = obs_new
 
             if is_terminal:

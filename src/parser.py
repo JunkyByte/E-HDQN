@@ -11,6 +11,7 @@ def boolean_string(s):
 args.add_argument('--env', default='DimGrid-v0', type=str, help='Environment name')
 args.add_argument('--ckpt', default='./', type=str, help='Ckpt path')
 args.add_argument('--step', default=-1, type=int, help='Ckpt step value')
+args.add_argument('--n_proc', default=1, type=int, help='Number of parallel (synced) environments')
 args.add_argument('--episodes', default=1_000_000, type=int, help='number of episodes')
 args.add_argument('--gamma', default=0.9, type=float, help='Discount reward factor')
 args.add_argument('--gamma_macro', default=0.9, type=float, help='Discount reward factor for macro policy')
