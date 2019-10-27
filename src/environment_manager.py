@@ -9,11 +9,7 @@ from rl.custom_wrappers import FixGrayScale, TimeLimit, TimeLimitMario, RepeatAc
 from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
-def create_environment(env_name, n_env, eval=False, **kwargs):
-    if eval:
-        env = make_env(env_name, 0, seed=42)()
-        return env
-
+def create_environment(env_name, n_env, **kwargs):
     env = SubprocVecEnv([make_env(env_name, i, kwargs=kwargs) for i in range(n_env)])
     return env
 

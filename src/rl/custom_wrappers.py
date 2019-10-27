@@ -1,10 +1,10 @@
-import gym
 import numpy as np
-from gym.spaces import Box
 import cv2
+from gym import Wrapper
+from gym.spaces import Box
 
 
-class TimeLimit(gym.Wrapper):
+class TimeLimit(Wrapper):
     def __init__(self, env, max_episode_steps=None):
         super(TimeLimit, self).__init__(env)
         if max_episode_steps is None:
@@ -24,7 +24,7 @@ class TimeLimit(gym.Wrapper):
         self._elapsed_steps = 0
         return self.env.reset(**kwargs)
 
-class FixGrayScale(gym.Wrapper):
+class FixGrayScale(Wrapper):
     def __init__(self, env):
         super(FixGrayScale, self).__init__(env)
 
@@ -40,7 +40,7 @@ class FixGrayScale(gym.Wrapper):
             observation = observation[..., np.newaxis]
         return observation
 
-class RepeatAction(gym.Wrapper):
+class RepeatAction(Wrapper):
     def __init__(self, env, nskip=4):
         super(RepeatAction, self).__init__(env)
         self.nskip = nskip
@@ -53,7 +53,7 @@ class RepeatAction(gym.Wrapper):
                 reward += r
         return observation, reward, done, info
 
-class ResizeState(gym.Wrapper):
+class ResizeState(Wrapper):
     def __init__(self, env, res=(64, 64), gray=False):
         super(ResizeState, self).__init__(env)
         self.res = res
@@ -80,7 +80,7 @@ class ResizeState(gym.Wrapper):
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
         return observation
 
-class LifeLimitMario(gym.Wrapper):
+class LifeLimitMario(Wrapper):
     def __init__(self, env):
         super(LifeLimitMario, self).__init__(env)
 
@@ -90,7 +90,7 @@ class LifeLimitMario(gym.Wrapper):
             done = True
         return observation, reward, done, info
 
-class TimeLimitMario(gym.Wrapper):
+class TimeLimitMario(Wrapper):
     def __init__(self, env, time):
         super(TimeLimitMario, self).__init__(env)
         self.time = time
@@ -101,7 +101,7 @@ class TimeLimitMario(gym.Wrapper):
             done = True
         return observation, reward, done, info
 
-class ChannelsConcat(gym.Wrapper):
+class ChannelsConcat(Wrapper):
     def __init__(self, env):
         super(ChannelsConcat, self).__init__(env)
         shape = self.observation_space.shape

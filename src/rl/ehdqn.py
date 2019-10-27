@@ -118,6 +118,7 @@ class EHDQN:
 
                 # Pick macro action
                 self.selected_policy[i] = self.pick_policy(x[i][None], deterministic=deterministic)
+                assert isinstance(self.selected_policy[i], int)
                 self.curr_time[i] = 0
                 if not deterministic:
                     self.macro_state[i] = obs[i]
@@ -127,7 +128,7 @@ class EHDQN:
         eps = max(0.01, self.eps_sub) if not deterministic else 0.01
         sel_pol = np.unique(self.selected_policy)
         sel_indices = [(self.selected_policy == i).nonzero()[0] for i in sel_pol]
-        action = -np.ones((self.n_proc,))
+        action = -np.ones((self.n_proc,), dtype=np.int)
         for policy_idx, indices in zip(sel_pol, sel_indices):
             action[indices] = self.policy[policy_idx].act(x[indices], eps=eps)
 

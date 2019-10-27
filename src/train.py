@@ -1,9 +1,10 @@
 from rl.ehdqn import EHDQN
 from environment_manager import create_environment
 import logging
-import logger as log
 import numpy as np
 import parser
+from tensorboard_logging import Logger
+import settings as sett
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
 
 
@@ -12,7 +13,10 @@ if __name__ == '__main__':
 
     # Setup env
     env = create_environment(args.env, n_env=args.n_proc, size=args.size)
-    eval_env = create_environment(args.env, n_env=1, size=args.size, eval=True)
+
+    # Logger
+    TB_LOGGER = Logger(sett.LOGPATH)
+    print('Torch Device: %s' % sett.device)
 
     obs = env.reset()
 
@@ -45,20 +49,19 @@ if __name__ == '__main__':
                 n_proc=args.n_proc,
                 gamma_macro=args.gamma_macro,
                 reward_rescale=args.reward_rescale,
-                logger=log.TB_LOGGER
+                logger=TB_LOGGER
                 )
 
     train_steps = 0
     tot_succ = 0
-    episodes_per_epoch = 100
+    episodes_per_epoch = 50
     episode_duration = np.zeros((args.n_proc,), dtype=np.int)
     remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
     i = 0
-    for _ in range(args.episodes):
-        logging.info('Episode: %s' % i)
+    for _ in range(args.episodes // episodes_per_epoch):
 
-        log.TB_LOGGER.step += 1
+        TB_LOGGER.step += 1
         obs = env.reset()
 
         i = 0
@@ -78,38 +81,46 @@ if __name__ == '__main__':
             episode_duration += 1
             for j, terminal in enumerate(is_terminal):
                 if terminal:
-                    log.TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration[j])
+                    TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration[j])
                     episode_duration[j] = 0
                     remotes[j].send(('reset', None))
                     obs[j] = remotes[j].recv()
                     i += 1
                     total_episodes += 1
+                    if total_episodes % 5 == 0:
+                        logging.info('Simulated %s episodes' % total_episodes)
 
             if i > episodes_per_epoch:
                 break
 
-        log.TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / i)
+        TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / i)
         tot_succ = 0
 
         dqn.set_mode(training=False)
         n_eval_episodes = 25
-        tot_reward = 0
-        for _ in range(n_eval_episodes):
-            obs = eval_env.reset()
-            while True:
-                action = dqn.act(obs[np.newaxis], deterministic=True)
-                obs_new, r, is_terminal, _ = eval_env.step(action)
+        tot_reward = np.zeros((args.n_proc,), dtype=np.int)
+        cumulative_reward = 0
+        counter = 0
+        obs = env.reset()
+        while counter < n_eval_episodes:
+            action = dqn.act(obs, deterministic=True)
+            obs_new, r, is_terminal, _ = env.step(action)
 
-                #env.render()
-                tot_reward += r
-                obs = obs_new
+            #env.render()
+            tot_reward += r
+            obs = obs_new
 
-                if is_terminal:
-                    break
+            for j, terminal in enumerate(is_terminal):
+                if terminal:
+                    remotes[j].send(('reset', None))
+                    obs[j] = remotes[j].recv()
+                    cumulative_reward += tot_reward[j]
+                    tot_reward[j] = 0
+                    counter += 1
 
-        eval_succ = tot_reward / n_eval_episodes
+        eval_succ = cumulative_reward / counter
         logging.info('Mean Reward: %s' % (eval_succ))
-        log.TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
+        TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
         dqn.set_mode(training=True)
 
         # Save ckpt
