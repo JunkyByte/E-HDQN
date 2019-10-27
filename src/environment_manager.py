@@ -35,7 +35,7 @@ def make_env(env_id, rank, seed=0, **kwargs):
             env = ResizeState(env, res=(84, 84), gray=True)
             env = FixGrayScale(env)
             env = FrameStack(env, num_stack=4)
-            env = ChannelsConcat(env)
+            #env = ChannelsConcat(env)
         env.seed(seed + rank)
         return env
     return _init

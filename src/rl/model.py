@@ -3,17 +3,19 @@ from torch import nn
 import torch.nn.functional as F
 import numpy as np
 from torch.distributions import Categorical
+import settings as sett
 
 
 class DDQN_Model(nn.Module):
     def __init__(self, state_size, action_size, conv, hidd_ch=128):
         super(DDQN_Model, self).__init__()
         self.action_size = action_size
+        self.hidd_ch = hidd_ch
         state_size = np.array(state_size)[[3, 1, 2, 0]]
 
         if conv:
             self.features = nn.Sequential(
-                nn.Conv2d(state_size[0], 32, kernel_size=6, stride=2, padding=1),
+                nn.Conv2d(state_size[0], 32, kernel_size=6, stride=3, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(32, 32, kernel_size=6, stride=2, padding=1),
                 nn.ReLU(),
@@ -29,13 +31,15 @@ class DDQN_Model(nn.Module):
             )
 
         # If using linear after frame stacks here we will calculate the output dimension by multiplying it by frame stacks
-        out_shape = self.features(torch.randn(*((1,) + tuple(state_size[:-1])))).view(-1).size().numel() * state_size[-1]
+        out_shape = self.features(torch.randn(*((1,) + tuple(state_size[:-1])))).view(-1).size().numel()
+        self.lstm_out = nn.LSTM(out_shape, hidd_ch, 1, batch_first=True)
+
         self.advantage = nn.Sequential(
-            nn.Linear(out_shape, self.action_size)
+            nn.Linear(hidd_ch, self.action_size)
         )
 
         self.value = nn.Sequential(
-            nn.Linear(out_shape, 1)
+            nn.Linear(hidd_ch, 1)
         )
 
     def forward(self, obs):
@@ -44,7 +48,13 @@ class DDQN_Model(nn.Module):
         obs = obs.float().transpose(2, 4)
         stack = obs.shape[1]
         x = torch.cat([self.features(obs[:, i])[:, None] for i in range(stack)], dim=1)
-        x = x.view(x.size(0), -1)
+        x = x.view(x.size(0), stack, -1)
+
+        h0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
+        c0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
+
+        lstm_out, (hn, cn) = self.lstm_out(x, (h0.detach(), c0.detach()))
+        x = lstm_out[:, -1]
         adv = self.advantage(x)
         value = self.value(x)
         return value + (adv - adv.mean(-1, keepdim=True))
@@ -71,6 +81,7 @@ class ICM_Model(nn.Module):
 
         self.action_size = action_size
         self.embed_state_size = embed_state_size
+        self.hidd_ch = hidd_ch
         self.state_size = np.array(state_size)[[3, 1, 2, 0]]
 
         # Forward Model
@@ -83,7 +94,7 @@ class ICM_Model(nn.Module):
         # Projection
         if conv:
             self.phi = nn.Sequential(
-                nn.Conv2d(self.state_size[0], 32, kernel_size=6, stride=2, padding=1),
+                nn.Conv2d(self.state_size[0], 32, kernel_size=6, stride=3, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(32, 32, kernel_size=6, stride=2, padding=1),
                 nn.ReLU(),
@@ -100,8 +111,9 @@ class ICM_Model(nn.Module):
                 nn.Relu()
             )
 
-        out_shape = self.phi(torch.randn(*((1,) + tuple(self.state_size[:-1])))).view(-1).size().numel() * self.state_size[-1]
-        self.proj_out = nn.Linear(out_shape, embed_state_size)
+        out_shape = self.phi(torch.randn(*((1,) + tuple(self.state_size[:-1])))).view(-1).size().numel()
+        self.lstm_out = nn.LSTM(out_shape, hidd_ch, 1, batch_first=True)
+        self.proj_out = nn.Linear(hidd_ch, embed_state_size)
 
         # Inverse Model
         self.inv = nn.Sequential(
@@ -122,7 +134,13 @@ class ICM_Model(nn.Module):
         x = s.float().transpose(2, 4)
         stack = x.shape[1]
         x = torch.cat([self.phi(x[:, i])[:, None] for i in range(stack)], dim=1)
-        x = x.view(x.size(0), -1)
+        x = x.view(x.size(0), stack, -1)
+
+        h0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
+        c0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
+
+        lstm_out, (hn, cn) = self.lstm_out(x, (h0.detach(), c0.detach()))
+        x = lstm_out[:, -1]
         return self.proj_out(x)
 
     def inverse_pred(self, s, s1):
