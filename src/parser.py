@@ -16,7 +16,7 @@ args.add_argument('--episodes', default=1_000_000, type=int, help='number of epi
 args.add_argument('--gamma', default=0.9, type=float, help='Discount reward factor')
 args.add_argument('--gamma_macro', default=0.9, type=float, help='Discount reward factor for macro policy')
 args.add_argument('--hidd_ch', default=128, type=int, help='Number of hidden units per hidden channels')
-args.add_argument('--lam', default=0.1, type=float, help='Scaler for intrinsic reward')
+args.add_argument('--lam', default=0.01, type=float, help='Scaler for intrinsic reward')
 args.add_argument('--embed_state_size', default=128, type=int, help='Number of units for embed representation')
 args.add_argument('--max_time', default=4, type=int, help='Number of steps per policy')
 args.add_argument('--n_subpolicy', default=2, type=int, help='Number of sub policies')

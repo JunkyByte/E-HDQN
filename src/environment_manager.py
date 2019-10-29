@@ -10,7 +10,7 @@ from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
 def create_environment(env_name, n_env, **kwargs):
-    env = SubprocVecEnv([make_env(env_name, i, kwargs=kwargs) for i in range(n_env)])
+    env = SubprocVecEnv([make_env(env_name, i, **kwargs) for i in range(n_env)])
     return env
 
 def make_env(env_id, rank, seed=0, **kwargs):
@@ -27,9 +27,13 @@ def make_env(env_id, rank, seed=0, **kwargs):
         if 'DimGrid' in env_id:
             env = gym.make(env_id, size=kwargs['size'])
         elif 'Mario' in env_id:
+            nskip = 6
+            if 'nskip' in kwargs.keys():
+                nskip = kwargs['nskip']
+
             env = gym.make(env_id)
             env = JoypadSpace(env, SIMPLE_MOVEMENT)
-            env = RepeatAction(env, nskip=6)
+            env = RepeatAction(env, nskip=nskip)
             # env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
             # env = LifeLimitMario(env)
             env = ResizeState(env, res=(84, 84), gray=True)

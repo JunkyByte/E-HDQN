@@ -5,14 +5,23 @@ import argparse
 import numpy as np
 from environment_manager import create_environment
 import parser
+import streamlit as st
 logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=logging.INFO)
+st.title('Environment Evaluation')
 
 
 if __name__ == '__main__':
     args = parser.args.parse_args()
+    image = st.empty()
+
+    nskip = 6
+    if 'Mario' in args.env:
+        world = st.selectbox('World', list(range(1, 9)))
+        env = 'SuperMarioBros-%s-1-v0' % world
+        nskip = st.selectbox('NSkip', [6] + list(range(1, 12)))
 
     # Setup env
-    env = create_environment(args.env, n_env=1, size=args.size)
+    env = create_environment(env, n_env=1, size=args.size, nskip=nskip)
 
     obs = env.reset()
 
@@ -59,8 +68,8 @@ if __name__ == '__main__':
             logging.info('Policy: %s Action %s' % (dqn.selected_policy, action))
             obs_new, r, is_terminal, _ = env.step(action)
 
-            env.render()
-            time.sleep(1e-2)
+            img = env.render(mode='rgb_array')
+            image.image(img)
 
             tot_reward += r[0]
             obs = obs_new

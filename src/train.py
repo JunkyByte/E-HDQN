@@ -13,6 +13,7 @@ if __name__ == '__main__':
 
     # Setup env
     env = create_environment(args.env, n_env=args.n_proc, size=args.size)
+    eval_env = create_environment(args.env, n_env=args.n_proc, seed=42, size=args.size)
 
     # Logger
     TB_LOGGER = Logger(sett.LOGPATH)
@@ -101,12 +102,11 @@ if __name__ == '__main__':
         tot_reward = np.zeros((args.n_proc,), dtype=np.int)
         cumulative_reward = 0
         counter = 0
-        obs = env.reset()
+        obs = eval_env.reset()
         while counter < n_eval_episodes:
             action = dqn.act(obs, deterministic=True)
-            obs_new, r, is_terminal, _ = env.step(action)
+            obs_new, r, is_terminal, _ = eval_env.step(action)
 
-            #env.render()
             tot_reward += r
             obs = obs_new
 
