@@ -7,7 +7,7 @@ import settings as sett
 
 
 class DDQN_Model(nn.Module):
-    def __init__(self, state_size, action_size, conv, hidd_ch=128):
+    def __init__(self, state_size, action_size, conv, hidd_ch=256, conv_ch=32):
         super(DDQN_Model, self).__init__()
         self.action_size = action_size
         self.hidd_ch = hidd_ch
@@ -15,12 +15,14 @@ class DDQN_Model(nn.Module):
 
         if conv:
             self.features = nn.Sequential(
-                nn.Conv2d(state_size[0], 32, kernel_size=6, stride=3, padding=1),
-                nn.ReLU(),
-                nn.Conv2d(32, 32, kernel_size=6, stride=2, padding=1),
-                nn.ReLU(),
-                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
-                nn.ReLU(),
+                nn.Conv2d(state_size[0], conv_ch, kernel_size=3, stride=3, padding=1),
+                nn.ELU(),
+                nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
+                nn.ELU()
             )
         else:
             self.features = nn.Sequential(
@@ -76,50 +78,46 @@ class DDQN_Model(nn.Module):
 
 
 class ICM_Model(nn.Module):
-    def __init__(self, state_size, embed_state_size, action_size, conv, hidd_ch=128):
+    def __init__(self, state_size, action_size, conv):
         super(ICM_Model, self).__init__()
 
         self.action_size = action_size
-        self.embed_state_size = embed_state_size
-        self.hidd_ch = hidd_ch
         self.state_size = np.array(state_size)[[3, 1, 2, 0]]
-
-        # Forward Model
-        self.fwd = nn.Sequential(
-            nn.Linear(self.embed_state_size + 1, hidd_ch),
-            nn.ReLU(),
-            nn.Linear(hidd_ch, self.embed_state_size)
-        )
 
         # Projection
         if conv:
             self.phi = nn.Sequential(
-                nn.Conv2d(self.state_size[0], 32, kernel_size=6, stride=3, padding=1),
-                nn.ReLU(),
-                nn.Conv2d(32, 32, kernel_size=6, stride=2, padding=1),
-                nn.ReLU(),
+                nn.Conv2d(self.state_size[0], 32, kernel_size=3, stride=3, padding=1),
+                nn.ELU(),
                 nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
-                nn.ReLU()
+                nn.ELU(),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.ELU()
             )
         else:
             self.phi = nn.Sequential(
-                nn.Linear(self.state_size, hidd_ch),
+                nn.Linear(self.state_size, 256),
                 nn.ReLU(),
-                nn.Linear(hidd_ch, hidd_ch),
+                nn.Linear(256, 256),
                 nn.ReLU(),
-                nn.Linear(hidd_ch, hidd_ch),
+                nn.Linear(256, 256),
                 nn.Relu()
             )
 
-        out_shape = self.phi(torch.randn(*((1,) + tuple(self.state_size[:-1])))).view(-1).size().numel()
-        self.lstm_out = nn.LSTM(out_shape, hidd_ch, 1, batch_first=True)
-        self.proj_out = nn.Linear(hidd_ch, embed_state_size)
+        # Forward Model
+        self.fwd = nn.Sequential(
+            nn.Linear(288 + 1, 256),
+            nn.ReLU(),
+            nn.Linear(256, 288)
+        )
 
         # Inverse Model
         self.inv = nn.Sequential(
-            nn.Linear(2 * embed_state_size, hidd_ch),
-            nn.ReLU(),
-            nn.Linear(hidd_ch, action_size)
+            nn.Linear(288 * 2, 256),
+            nn.ELU(),
+            nn.Linear(256, action_size)
         )
 
     def forward(self, *input):
@@ -131,17 +129,10 @@ class ICM_Model(nn.Module):
         return phi_hat
 
     def phi_state(self, s):
-        x = s.float().transpose(2, 4)
-        stack = x.shape[1]
-        x = torch.cat([self.phi(x[:, i])[:, None] for i in range(stack)], dim=1)
-        x = x.view(x.size(0), stack, -1)
-
-        h0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
-        c0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
-
-        lstm_out, (hn, cn) = self.lstm_out(x, (h0.detach(), c0.detach()))
-        x = lstm_out[:, -1]
-        return self.proj_out(x)
+        s = s[:, -1]
+        x = s.float().transpose(1, 3)
+        x = self.phi(x)
+        return x.view(x.size(0), -1)
 
     def inverse_pred(self, s, s1):
         s = self.phi_state(s.float())
@@ -150,8 +141,8 @@ class ICM_Model(nn.Module):
         return self.inv(x)
 
     def curiosity_rew(self, s, s1, a):
-        phi_hat = self(s, a)
+        phi_hat = self.forward(s, a)
         phi_s1 = self.phi_state(s1)
-        cur_rew = 1 / 2 * torch.norm(phi_hat - phi_s1, dim=-1) ** 2
+        cur_rew = 1 / 2 * (torch.norm(phi_hat - phi_s1, p=2, dim=-1) ** 2)
         return cur_rew
 

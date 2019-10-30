@@ -27,7 +27,6 @@ if __name__ == '__main__':
 
     conv = True if isinstance(n_state, tuple) else False
     dqn = EHDQN(state_dim=n_state,
-                embed_state_dim=args.embed_state_size,
                 tau=args.tau,
                 action_dim=n_actions,
                 gamma=args.gamma,

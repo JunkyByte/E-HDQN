@@ -9,12 +9,11 @@ import os
 
 
 class EHDQN:
-    def __init__(self, state_dim, embed_state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam, lr, eps,
+    def __init__(self, state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam, lr, eps,
                  eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, max_memory_sub,
                  conv, gamma_macro, reward_rescale, n_proc, norm_input=True, logger=None):
         """
         :param state_dim: Shape of the state
-        :param int embed_state_dim: Length of the embed state
         :param float tau: Weight for agent loss
         :param gamma_macro: Discount for macro controller
         :param int action_dim: Number of actions
@@ -55,7 +54,6 @@ class EHDQN:
         self.eps_sub_decay = 1 - eps_sub_decay
         self.gamma = gamma
         # ICM parameters
-        self.embed_state_dim = embed_state_dim
         self.beta = beta
         self.lam = lam
 
@@ -81,13 +79,13 @@ class EHDQN:
         self.memory, self.policy, self.target, self.icm, self.policy_opt = [], [], [], [], []
         for i in range(n_subpolicy):
             # Create sub-policies
-            self.policy.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch).to(sett.device))
-            self.target.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch).to(sett.device))
+            self.policy.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch=128).to(sett.device))
+            self.target.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch=128).to(sett.device))
             self.target[-1].update_target(self.policy[-1])
             self.memory.append(Memory(max_memory_sub))
 
             # Create ICM modules
-            self.icm.append(ICM_Model(self.state_dim, self.embed_state_dim, self.action_dim, conv, hidd_ch).to(sett.device))
+            self.icm.append(ICM_Model(self.state_dim, self.action_dim, conv).to(sett.device))
 
             # Create sub optimizers
             params = [self.icm[i].parameters(), self.policy[i].parameters()]
@@ -200,7 +198,7 @@ class EHDQN:
 
             # Augment rewards with curiosity
             curiosity_rewards = icm.curiosity_rew(state, new_state, action)
-            reward += self.lam * curiosity_rewards
+            reward = (1 - 0.01) * reward + 0.01 * self.lam * curiosity_rewards
 
             # Policy loss
             q = policy(state)[torch.arange(self.bs), action]
@@ -211,9 +209,9 @@ class EHDQN:
             # ICM Loss
             phi_hat = icm(state, action)
             phi_true = icm.phi_state(new_state)
-            fwd_loss = mse_loss(input=phi_hat, target=phi_true.detach())
+            fwd_loss = 288 * mse_loss(input=phi_hat, target=phi_true.detach())
             a_hat = icm.inverse_pred(state, new_state)
-            inv_loss = cross_entropy(input=a_hat, target=action)
+            inv_loss = cross_entropy(input=a_hat, target=action.detach())
 
             # Total loss
             loss = self.tau * policy_loss + (1 - self.beta) * inv_loss + self.beta * fwd_loss

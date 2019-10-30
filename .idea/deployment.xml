@@ -1,8 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="adryw@1.tcp.eu.ngrok.io:22946">
+  <component name="PublishConfigData" autoUpload="Always" serverName="tunnel_adryw_gcp">
     <serverData>
       <paths name="adryw@1.tcp.eu.ngrok.io:22946">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/tmp/ehdqn" local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="tunnel_adryw_gcp">
         <serverdata>
           <mappings>
             <mapping deploy="/tmp/ehdqn" local="$PROJECT_DIR$" web="/" />

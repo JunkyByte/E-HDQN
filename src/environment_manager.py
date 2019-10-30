@@ -5,7 +5,7 @@ from nes_py.wrappers import JoypadSpace
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 from gym.wrappers import AtariPreprocessing
 from rl.frame_stack import FrameStack
-from rl.custom_wrappers import FixGrayScale, TimeLimit, TimeLimitMario, RepeatAction, ResizeState, ChannelsConcat, LifeLimitMario
+from rl.custom_wrappers import FixGrayScale, TimeLimit, TimeLimitMario, RepeatAction, ResizeState, ChannelsConcat, LifeLimitMario, RewardSparse
 from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 
@@ -36,10 +36,12 @@ def make_env(env_id, rank, seed=0, **kwargs):
             env = RepeatAction(env, nskip=nskip)
             # env = TimeLimitMario(env, time=300) # 400 - time = total_seconds
             # env = LifeLimitMario(env)
-            env = ResizeState(env, res=(84, 84), gray=True)
+            env = ResizeState(env, res=(64, 64), gray=True)
             env = FixGrayScale(env)
             env = FrameStack(env, num_stack=4)
             #env = ChannelsConcat(env)
+            if 'sparse' in kwargs.keys() and kwargs['sparse'] == True: # TODO
+                env = RewardSparse(env)
         env.seed(seed + rank)
         return env
     return _init

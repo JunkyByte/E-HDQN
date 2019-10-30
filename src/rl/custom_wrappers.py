@@ -121,3 +121,18 @@ class ChannelsConcat(Wrapper):
     def reset(self, **kwargs):
         observation = np.array(self.env.reset(**kwargs))
         return self.concat(observation)
+
+class RewardSparse(Wrapper):
+    def __init__(self, env):
+        super(RewardSparse, self).__init__(env)
+
+    def step(self, action):
+        observation, reward, done, info = self.env.step(action)
+        if done:
+            reward = -15
+        else:
+            reward = 0
+        return observation, reward, done, info
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)

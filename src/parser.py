@@ -17,7 +17,6 @@ args.add_argument('--gamma', default=0.9, type=float, help='Discount reward fact
 args.add_argument('--gamma_macro', default=0.9, type=float, help='Discount reward factor for macro policy')
 args.add_argument('--hidd_ch', default=128, type=int, help='Number of hidden units per hidden channels')
 args.add_argument('--lam', default=0.01, type=float, help='Scaler for intrinsic reward')
-args.add_argument('--embed_state_size', default=128, type=int, help='Number of units for embed representation')
 args.add_argument('--max_time', default=4, type=int, help='Number of steps per policy')
 args.add_argument('--n_subpolicy', default=2, type=int, help='Number of sub policies')
 args.add_argument('--lr', default=1e-3, type=float, help='Learning rate for agent training')
@@ -32,7 +31,7 @@ args.add_argument('--target_int', default=100, type=int, help='Steps of training
 args.add_argument('--max_memory', default=100_000, type=int, help='Max macro memory')
 args.add_argument('--max_memory_sub', default=100_000, type=int, help='Max memory sub')
 args.add_argument('--size', default=20, type=int, help='Size for DimGrid environment')
-args.add_argument('--tau', default=0.01, type=float, help='Weight for agent loss')
+args.add_argument('--tau', default=0.1, type=float, help='Weight for agent loss')
 args.add_argument('--beta', default=0.2, type=float, help='Weight for fwd vs inv icm loss')
 args.add_argument('--reward_rescale', default=0., type=float, help='Reward rescaling: 0 -> Id, 1 -> sign(R), 2 -> [-1;1], float -> Rew * mult')
 
