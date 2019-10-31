@@ -21,7 +21,7 @@ if __name__ == '__main__':
         nskip = st.selectbox('NSkip', [6] + list(range(1, 12)))
 
     # Setup env
-    env = create_environment(env, n_env=1, size=args.size, nskip=nskip)
+    env = create_environment(env, n_env=1, size=args.size, nskip=nskip, sparse=args.sparse)
 
     obs = env.reset()
 
@@ -31,7 +31,6 @@ if __name__ == '__main__':
 
     conv = True if isinstance(n_state, tuple) else False
     dqn = EHDQN(state_dim=n_state,
-                embed_state_dim=args.embed_state_size,
                 tau=args.tau,
                 action_dim=n_actions,
                 gamma=args.gamma,

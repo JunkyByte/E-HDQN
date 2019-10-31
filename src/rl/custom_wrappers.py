@@ -123,16 +123,21 @@ class ChannelsConcat(Wrapper):
         return self.concat(observation)
 
 class RewardSparse(Wrapper):
-    def __init__(self, env):
+    def __init__(self, env, very_sparse=False):
         super(RewardSparse, self).__init__(env)
+        self.very_sparse = very_sparse
+        self.max_pos = 0
 
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        if done:
-            reward = -15
-        else:
-            reward = 0
+        reward = 0
+        if not done:
+            if not self.very_sparse and info['x_pos'] - self.max_pos > 500:
+                reward += 1
+                self.max_pos = info['x_pos']
+
         return observation, reward, done, info
 
     def reset(self, **kwargs):
+        self.last_stage = 1
         return self.env.reset(**kwargs)

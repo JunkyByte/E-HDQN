@@ -2,7 +2,6 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 import numpy as np
-from torch.distributions import Categorical
 import settings as sett
 
 
@@ -61,14 +60,10 @@ class DDQN_Model(nn.Module):
         value = self.value(x)
         return value + (adv - adv.mean(-1, keepdim=True))
 
-    def act(self, state, eps, categorical=False):
+    def act(self, state, eps):
         if np.random.random() > eps:
-            if categorical:
-                q = self.forward(state)
-                action = Categorical(logits=q).sample().cpu().data.numpy()
-            else:
-                q = self.forward(state)
-                action = torch.argmax(q, dim=-1).cpu().data.numpy()
+            q = self.forward(state)
+            action = torch.argmax(q, dim=-1).cpu().data.numpy()
         else:
             action = np.random.randint(self.action_size, size=1 if len(state.shape) == 1 else state.shape[0])
         return action.item() if action.shape == (1,) else list(action.astype(np.int))

@@ -12,8 +12,9 @@ if __name__ == '__main__':
     args = parser.args.parse_args()
 
     # Setup env
-    env = create_environment(args.env, n_env=args.n_proc, size=args.size)
-    eval_env = create_environment(args.env, n_env=args.n_proc, seed=42, size=args.size)
+    env = create_environment(args.env, n_env=args.n_proc, size=args.size, sparse=args.sparse)
+    eval_env = create_environment(args.env, n_env=args.n_proc, seed=42, size=args.size, sparse=args.sparse)
+    is_mario = True if 'Mario' in args.env else False
 
     # Logger
     TB_LOGGER = Logger(sett.LOGPATH)
@@ -58,6 +59,7 @@ if __name__ == '__main__':
     episode_duration = np.zeros((args.n_proc,), dtype=np.int)
     remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
+    total_x_pos = 0
     i = 0
     for _ in range(args.episodes // episodes_per_epoch):
 
@@ -67,7 +69,7 @@ if __name__ == '__main__':
         i = 0
         while True:
             action = dqn.act(obs)
-            obs_new, r, is_terminal, _ = env.step(action)
+            obs_new, r, is_terminal, info = env.step(action)
 
             tot_succ += sum(r)
             dqn.store_transition(obs, obs_new, action, r, is_terminal)
@@ -81,6 +83,11 @@ if __name__ == '__main__':
             episode_duration += 1
             for j, terminal in enumerate(is_terminal):
                 if terminal:
+                    if is_mario:
+                        try:
+                            total_x_pos += info[i]['x_pos']
+                        except IndexError:
+                            pass
                     TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration[j])
                     episode_duration[j] = 0
                     remotes[j].send(('reset', None))
@@ -93,8 +100,11 @@ if __name__ == '__main__':
             if i > episodes_per_epoch:
                 break
 
+        if is_mario:
+            TB_LOGGER.log_scalar(tag='Mean End X', value=total_x_pos / i)
         TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / i)
         tot_succ = 0
+        total_x_pos = 0
 
         dqn.set_mode(training=False)
         n_eval_episodes = 25
@@ -104,7 +114,7 @@ if __name__ == '__main__':
         obs = eval_env.reset()
         while counter < n_eval_episodes:
             action = dqn.act(obs, deterministic=True)
-            obs_new, r, is_terminal, _ = eval_env.step(action)
+            obs_new, r, is_terminal, info = eval_env.step(action)
 
             tot_reward += r
             obs = obs_new

@@ -40,8 +40,11 @@ def make_env(env_id, rank, seed=0, **kwargs):
             env = FixGrayScale(env)
             env = FrameStack(env, num_stack=4)
             #env = ChannelsConcat(env)
-            if 'sparse' in kwargs.keys() and kwargs['sparse'] == True: # TODO
-                env = RewardSparse(env)
-        env.seed(seed + rank)
+            if 'sparse' in kwargs.keys():
+                if kwargs['sparse'] == 1:
+                    env = RewardSparse(env)
+                elif kwargs['sparse'] == 2:
+                    env = RewardSparse(env, very_sparse=True)
+            env.seed(seed + rank)
         return env
     return _init

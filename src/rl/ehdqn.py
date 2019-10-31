@@ -135,9 +135,7 @@ class EHDQN:
 
     def pick_policy(self, obs, deterministic=False):
         eps = max(0.01, self.eps) if not deterministic else 0.01
-        cat = True if not deterministic else False
-
-        policy = self.macro.act(obs, eps=eps, categorical=cat)
+        policy = self.macro.act(obs, eps=eps)
         return policy
 
     def set_mode(self, training=False):
