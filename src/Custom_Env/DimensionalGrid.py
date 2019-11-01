@@ -33,14 +33,14 @@ class DimGridEnvironment(Env):
 
     def _compute_action(self, action):
         action = self.action_dict[action]
-        reward = 0
+        reward = 0.
 
         if action == 4: # Change dimension
             self.alternate_dim = not self.alternate_dim
         else:
             new_pos = tuple(np.array(self.player_pos) + action)
             if any(np.array(new_pos) == self.size) or any(np.array(new_pos) < 0):
-                reward = -1 if not self.hard else 0
+                reward = -1. if not self.hard else 0.
                 return reward, True
             self.player_pos = new_pos
             touched_wall = self.walls[self.player_pos]
@@ -50,7 +50,7 @@ class DimGridEnvironment(Env):
                 if touched_wall:
                     reward += -0.5
                     if self.hard:
-                        return 0, True
+                        return 0., True
 
         terminal = True if self.player_pos == self.goal else False
         reward += int(terminal)
@@ -59,7 +59,7 @@ class DimGridEnvironment(Env):
     def step(self, action):
         reward, terminal = self._compute_action(action)
         obs = self._get_obs()
-        return obs, reward, terminal, None
+        return obs, reward, terminal, {}
 
     def _get_obs(self):
         if self.alternate_dim:

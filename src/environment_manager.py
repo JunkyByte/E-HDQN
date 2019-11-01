@@ -26,6 +26,8 @@ def make_env(env_id, rank, seed=0, **kwargs):
     def _init():
         if 'DimGrid' in env_id:
             env = gym.make(env_id, size=kwargs['size'])
+            env = TimeLimit(env, max_episode_steps=kwargs['size'] * 4)
+            env = FrameStack(env, num_stack=1)
         elif 'Mario' in env_id:
             nskip = 6
             if 'nskip' in kwargs.keys():

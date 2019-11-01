@@ -79,8 +79,8 @@ class EHDQN:
         self.memory, self.policy, self.target, self.icm, self.policy_opt = [], [], [], [], []
         for i in range(n_subpolicy):
             # Create sub-policies
-            self.policy.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch=128).to(sett.device))
-            self.target.append(DDQN_Model(state_dim, action_dim, conv, hidd_ch=128).to(sett.device))
+            self.policy.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
+            self.target.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
             self.target[-1].update_target(self.policy[-1])
             self.memory.append(Memory(max_memory_sub))
 

@@ -18,7 +18,7 @@ class TimeLimit(Wrapper):
         self._elapsed_steps += 1
         if self._elapsed_steps >= self._max_episode_steps:
             done = True
-        return observation, reward, done, None
+        return observation, reward, done, info
 
     def reset(self, **kwargs):
         self._elapsed_steps = 0
@@ -132,12 +132,12 @@ class RewardSparse(Wrapper):
         observation, reward, done, info = self.env.step(action)
         reward = 0
         if not done:
-            if not self.very_sparse and info['x_pos'] - self.max_pos > 500:
+            if not self.very_sparse and info['x_pos'] - self.max_pos > 200:
                 reward += 1
                 self.max_pos = info['x_pos']
 
         return observation, reward, done, info
 
     def reset(self, **kwargs):
-        self.last_stage = 1
+        self.max_pos = 0
         return self.env.reset(**kwargs)
