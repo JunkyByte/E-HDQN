@@ -101,16 +101,18 @@ class ICM_Model(nn.Module):
                 nn.Relu()
             )
 
+        out_shape = self.phi(torch.randn(*((1,) + tuple(self.state_size[:-1])))).view(-1).size().numel()
+
         # Forward Model
         self.fwd = nn.Sequential(
-            nn.Linear(288 + 1, 256),
+            nn.Linear(out_shape + 1, 256),
             nn.ReLU(),
-            nn.Linear(256, 288)
+            nn.Linear(256, out_shape)
         )
 
         # Inverse Model
         self.inv = nn.Sequential(
-            nn.Linear(288 * 2, 256),
+            nn.Linear(out_shape * 2, 256),
             nn.ELU(),
             nn.Linear(256, action_size)
         )

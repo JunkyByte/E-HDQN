@@ -65,7 +65,7 @@ class EHDQN:
         self.reward_rescale = reward_rescale
         self.norm_input = norm_input
         self.curr_time = np.zeros((self.n_proc, ), dtype=np.int)
-        self.macro_reward = np.zeros((self.n_proc,), dtype=np.int)
+        self.macro_reward = np.zeros((self.n_proc,), dtype=np.float)
         self.target_count = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.counter_macro = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.macro_count = 0
@@ -92,6 +92,8 @@ class EHDQN:
             self.policy_opt.append(torch.optim.Adam(itertools.chain(*params), lr=self.lr))
 
     def save(self, i):
+        if not os.path.isdir(sett.SAVEPATH):
+            os.makedirs(sett.SAVEPATH)
         torch.save(self.macro.state_dict(), os.path.join(sett.SAVEPATH, 'Macro_%s.pth' % i))
         for sub in range(self.n_subpolicy):
             torch.save(self.policy[sub].state_dict(), os.path.join(sett.SAVEPATH, 'Sub_%s_%s.pth' % (sub, i)))
@@ -142,6 +144,8 @@ class EHDQN:
         for policy in self.policy:
             policy.train(training)
         self.macro.train(training)
+        self.selected_policy[:] = None
+        self.curr_time[:] = 0
 
     def store_transition(self, s, s1, a, reward, is_terminal):
         # Rescale reward if a scaling is provided
@@ -199,9 +203,9 @@ class EHDQN:
             reward = (1 - 0.01) * reward + 0.01 * self.lam * curiosity_rewards
 
             # Policy loss
-            q = policy(state)[torch.arange(self.bs), action]
-            max_action = torch.argmax(policy(new_state), dim=1)
-            y = reward + self.gamma * target(new_state)[torch.arange(self.bs), max_action] * is_terminal
+            q = policy.forward(state)[torch.arange(self.bs), action]
+            max_action = torch.argmax(policy.forward(new_state), dim=1)
+            y = reward + self.gamma * target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
             policy_loss = smooth_l1_loss(input=q, target=y.detach())
 
             # ICM Loss
@@ -230,6 +234,8 @@ class EHDQN:
                 self.logger.log_scalar(tag='ICM Inv Loss %i' % i, value=inv_loss.cpu().detach().numpy())
                 self.logger.log_scalar(tag='Total Policy Loss %i' % i, value=loss.cpu().detach().numpy())
                 self.logger.log_scalar(tag='Mean Curiosity Reward %i' % i, value=curiosity_rewards.mean().cpu().detach().numpy())
+                self.logger.log_scalar(tag='Q values %i' % i, value=q.cpu().detach().numpy().mean())
+                self.logger.log_scalar(tag='Target Boltz %i' % i, value=y.cpu().detach().numpy().mean())
 
         # Reduce sub eps
         self.eps_sub = self.eps_sub * self.eps_sub_decay
@@ -252,9 +258,9 @@ class EHDQN:
         reward = torch.tensor(reward, dtype=torch.float).detach().to(sett.device)
         is_terminal = torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
 
-        q = self.macro(state)[torch.arange(self.bs), action]
-        max_action = torch.argmax(self.macro(new_state), dim=1)
-        y = reward + self.gamma_macro * self.macro_target(new_state)[torch.arange(self.bs), max_action] * is_terminal
+        q = self.macro.forward(state)[torch.arange(self.bs), action]
+        max_action = torch.argmax(self.macro.forward(new_state), dim=1)
+        y = reward + self.gamma_macro * self.macro_target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
         loss = smooth_l1_loss(input=q, target=y.detach())
 
         self.macro_opt.zero_grad()
@@ -273,7 +279,12 @@ class EHDQN:
             self.logger.log_scalar(tag='Sub Eps', value=self.eps_sub)
             self.logger.log_scalar(tag='Macro Eps', value=self.eps)
             values = self.counter_macro / max(1, np.sum(self.counter_macro))
+            if sum(self.counter_macro) >= 2000:
+                self.counter_macro[:] = 0
+
             self.logger.log_text(tag='Macro Policy Actions', value=[str(v) for v in values],
                                  step=self.logger.step)
             self.logger.log_histogram(tag='Macro Policy Actions0', values=values,
                                       step=self.logger.step, bins=2)
+            self.logger.log_scalar(tag='Macro Q values', value=q.cpu().detach().numpy().mean())
+            self.logger.log_scalar(tag='Marcro Target Boltz', value=y.cpu().detach().numpy().mean())
