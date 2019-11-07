@@ -1,7 +1,8 @@
 import numpy as np
 import torch
-from src.rl.model import DDQN_Model, ICM_Model
-from src.rl.memory import Memory
+from rl.model import DDQN_Model, ICM_Model
+from rl.memory import Memory
+from rl.per import PERMemory
 from torch.nn.functional import mse_loss, cross_entropy, smooth_l1_loss
 import settings as sett
 import itertools
@@ -11,7 +12,7 @@ import os
 class EHDQN:
     def __init__(self, state_dim, tau, action_dim, gamma, n_subpolicy, max_time, hidd_ch, lam, lr, eps,
                  eps_decay, eps_sub, eps_sub_decay, beta, bs, target_interval, train_steps, max_memory, max_memory_sub,
-                 conv, gamma_macro, reward_rescale, n_proc, norm_input=True, logger=None):
+                 conv, gamma_macro, reward_rescale, n_proc, per=False, norm_input=True, logger=None):
         """
         :param state_dim: Shape of the state
         :param float tau: Weight for agent loss
@@ -33,6 +34,7 @@ class EHDQN:
         :param int train_steps: Number of training iterations for each call
         :param int max_memory: Max memory
         :param bool conv: Use or not convolutional networks
+        :param bool per: Use or not prioritized experience replay
         :param int max_time: Maximum steps for sub policy
         """
 
@@ -64,11 +66,17 @@ class EHDQN:
         self.train_steps = train_steps
         self.reward_rescale = reward_rescale
         self.norm_input = norm_input
+        self.per = per
         self.curr_time = np.zeros((self.n_proc, ), dtype=np.int)
         self.macro_reward = np.zeros((self.n_proc,), dtype=np.float)
         self.target_count = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.counter_macro = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.macro_count = 0
+
+        if self.per:
+            memory = PERMemory
+        else:
+            memory = Memory
 
         # Create Policies / ICM modules / Memories
         self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch).to(sett.device)
@@ -82,7 +90,7 @@ class EHDQN:
             self.policy.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
             self.target.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
             self.target[-1].update_target(self.policy[-1])
-            self.memory.append(Memory(max_memory_sub))
+            self.memory.append(memory(max_memory_sub))
 
             # Create ICM modules
             self.icm.append(ICM_Model(self.state_dim, self.action_dim, conv).to(sett.device))
@@ -112,7 +120,7 @@ class EHDQN:
             if sel_policy is None or curr_time == self.max_time:
                 if not sel_policy is None and not deterministic:
                     # Store non terminal macro transition
-                    self.macro_reward[i] /= self.max_time
+                    #self.macro_reward[i] /= self.max_time
                     self.macro_memory.store_transition(self.macro_state[i], obs[i], sel_policy, self.macro_reward[i], False)
                     self.macro_reward[i] = 0
 
@@ -147,7 +155,7 @@ class EHDQN:
         self.selected_policy[:] = None
         self.curr_time[:] = 0
 
-    def store_transition(self, s, s1, a, reward, is_terminal):
+    def process_reward(self, reward):
         # Rescale reward if a scaling is provided
         if self.reward_rescale != 0:
             if self.reward_rescale == 1:
@@ -156,6 +164,10 @@ class EHDQN:
                 reward = np.clip(reward, -1, 1)
             else:
                 reward *= self.reward_rescale
+        return reward
+
+    def store_transition(self, s, s1, a, reward, is_terminal):
+        reward = self.process_reward(reward)
 
         for i, sel_policy in enumerate(self.selected_policy):
             # Store sub policy experience
@@ -164,7 +176,7 @@ class EHDQN:
 
             # Store terminal macro transition
             if is_terminal[i]:
-                self.macro_reward[i] /= self.max_time
+                #self.macro_reward[i] /= self.max_time
                 self.macro_memory.store_transition(self.macro_state[i], s1[i], sel_policy, self.macro_reward[i], is_terminal[i])
                 self.macro_reward[i] = 0
                 self.selected_policy[i] = None
@@ -179,7 +191,7 @@ class EHDQN:
         # First train each sub policy
         for i in range(self.n_subpolicy):
             memory = self.memory[i]
-            if len(memory.state) < self.bs * 10:
+            if len(memory) < self.bs * 10:
                 continue
 
             policy = self.policy[i]
@@ -187,7 +199,14 @@ class EHDQN:
             icm = self.icm[i]
             policy_opt = self.policy_opt[i]
 
-            state, new_state, action, reward, is_terminal = memory.sample(self.bs)
+            if self.per:
+                state, new_state, action, reward, is_terminal, idxs, w_is = memory.sample(self.bs)
+                reduction = 'none'
+                self.logger.log_scalar(tag='Beta PER %i' % i, value=memory.beta)
+            else:
+                state, new_state, action, reward, is_terminal = memory.sample(self.bs)
+                reduction = 'mean'
+
             if self.norm_input:
                 state = np.array(state, dtype=np.float) / 255
                 new_state = np.array(new_state, dtype=np.float) / 255
@@ -201,22 +220,36 @@ class EHDQN:
             # Augment rewards with curiosity
             curiosity_rewards = icm.curiosity_rew(state, new_state, action)
             reward = (1 - 0.01) * reward + 0.01 * self.lam * curiosity_rewards
+            #reward = self.reward_rescale(reward)  # TODO
 
             # Policy loss
             q = policy.forward(state)[torch.arange(self.bs), action]
             max_action = torch.argmax(policy.forward(new_state), dim=1)
             y = reward + self.gamma * target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
-            policy_loss = smooth_l1_loss(input=q, target=y.detach())
+            policy_loss = smooth_l1_loss(input=q, target=y.detach(), reduction=reduction).mean(-1)
 
             # ICM Loss
-            phi_hat = icm(state, action)
+            phi_hat = icm.forward(state, action)
             phi_true = icm.phi_state(new_state)
-            fwd_loss = 288 * mse_loss(input=phi_hat, target=phi_true.detach())
+            fwd_loss = mse_loss(input=phi_hat, target=phi_true.detach(), reduction=reduction).mean(-1)
             a_hat = icm.inverse_pred(state, new_state)
-            inv_loss = cross_entropy(input=a_hat, target=action.detach())
+            inv_loss = cross_entropy(input=a_hat, target=action.detach(), reduction=reduction).mean(-1)
 
             # Total loss
-            loss = self.tau * policy_loss + (1 - self.beta) * inv_loss + self.beta * fwd_loss
+            inv_loss = (1/self.tau) * (1 - self.beta) * inv_loss
+            fwd_loss = (1/self.tau) * self.beta * fwd_loss * 288
+            loss = policy_loss + inv_loss + fwd_loss
+
+            if self.per:
+                #errors = np.clip((torch.abs(q - y) + fwd_loss + inv_loss).cpu().data.numpy(), -1, 1) # TODO
+                errors = np.clip((torch.abs(q - y) + inv_loss).cpu().data.numpy(), -1, 1) # TODO
+                #errors = np.clip((torch.abs(q - y)).cpu().data.numpy(), -1, 1)
+                # update priorities
+                for k in range(self.bs):
+                    memory.update(idxs[k], errors[k])
+
+                loss = (loss * torch.FloatTensor(w_is).to(sett.device)).mean()
+
             policy_opt.zero_grad()
             loss.backward()
             for param in policy.parameters():
@@ -229,19 +262,21 @@ class EHDQN:
                 self.target[i].update_target(self.policy[i])
 
             if self.logger is not None:
-                self.logger.log_scalar(tag='Policy Loss %i' % i, value=policy_loss.cpu().detach().numpy())
-                self.logger.log_scalar(tag='ICM Fwd Loss %i' % i, value=fwd_loss.cpu().detach().numpy())
-                self.logger.log_scalar(tag='ICM Inv Loss %i' % i, value=inv_loss.cpu().detach().numpy())
-                self.logger.log_scalar(tag='Total Policy Loss %i' % i, value=loss.cpu().detach().numpy())
-                self.logger.log_scalar(tag='Mean Curiosity Reward %i' % i, value=curiosity_rewards.mean().cpu().detach().numpy())
-                self.logger.log_scalar(tag='Q values %i' % i, value=q.cpu().detach().numpy().mean())
-                self.logger.log_scalar(tag='Target Boltz %i' % i, value=y.cpu().detach().numpy().mean())
+                self.logger.log_scalar(tag='Policy Loss %i' % i, value=policy_loss.mean().cpu().data.numpy())
+                self.logger.log_scalar(tag='ICM Fwd Loss %i' % i, value=fwd_loss.mean().cpu().data.numpy())
+                self.logger.log_scalar(tag='ICM Inv Loss %i' % i, value=inv_loss.mean().cpu().data.numpy())
+                self.logger.log_scalar(tag='Total Policy Loss %i' % i, value=loss.mean().cpu().data.numpy())
+                self.logger.log_scalar(tag='Mean Curiosity Reward %i' % i, value=curiosity_rewards.mean().cpu().data.numpy())
+                self.logger.log_scalar(tag='Q values %i' % i, value=q.mean().cpu().data.numpy())
+                self.logger.log_scalar(tag='Target Boltz %i' % i, value=y.mean().cpu().data.numpy())
+                if self.per:
+                    self.logger.log_scalar(tag='PER Error %i' % i, value=errors.mean())
 
         # Reduce sub eps
         self.eps_sub = self.eps_sub * self.eps_sub_decay
 
         # Train Macro policy
-        if len(self.macro_memory.state) < self.bs * 10:
+        if len(self.macro_memory) < self.bs * 10:
             return
 
         # Reduce eps
@@ -278,13 +313,13 @@ class EHDQN:
             self.logger.log_scalar(tag='Macro Loss', value=loss.cpu().detach().numpy())
             self.logger.log_scalar(tag='Sub Eps', value=self.eps_sub)
             self.logger.log_scalar(tag='Macro Eps', value=self.eps)
-            values = self.counter_macro / max(1, np.sum(self.counter_macro))
-            if sum(self.counter_macro) >= 2000:
-                self.counter_macro[:] = 0
-
-            self.logger.log_text(tag='Macro Policy Actions', value=[str(v) for v in values],
+            summed = sum(self.counter_macro)
+            values = self.counter_macro / max(1, summed)
+            self.logger.log_text(tag='Macro Policy Actions Text', value=[str(v) for v in values],
                                  step=self.logger.step)
-            self.logger.log_histogram(tag='Macro Policy Actions0', values=values,
-                                      step=self.logger.step, bins=2)
+            self.logger.log_histogram(tag='Macro Policy Actions Hist', values=values,
+                                      step=self.logger.step, bins=self.n_subpolicy)
+            if summed >= 20000:
+                self.counter_macro[:] = 0
             self.logger.log_scalar(tag='Macro Q values', value=q.cpu().detach().numpy().mean())
             self.logger.log_scalar(tag='Marcro Target Boltz', value=y.cpu().detach().numpy().mean())

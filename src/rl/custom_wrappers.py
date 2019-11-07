@@ -68,14 +68,16 @@ class ResizeState(Wrapper):
 
     def step(self, action):
         observation, reward, done, info = self.env.step(action)
-        observation = cv2.resize(observation, self.res)
+        observation = cv2.resize(observation, self.res, interpolation=cv2.INTER_AREA)
+        observation = cv2.convertScaleAbs(observation, alpha=1.25, beta=25)
         if self.gray:
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
         return observation, reward, done, info
 
     def reset(self, **kwargs):
         observation = self.env.reset(**kwargs)
-        observation = cv2.resize(observation, self.res)
+        observation = cv2.resize(observation, self.res, interpolation=cv2.INTER_AREA)
+        observation = cv2.convertScaleAbs(observation, alpha=1.25, beta=25)
         if self.gray:
             observation = cv2.cvtColor(observation, cv2.COLOR_RGB2GRAY)
         return observation

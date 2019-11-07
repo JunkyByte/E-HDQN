@@ -1,4 +1,5 @@
 import numpy as np
+import collections
 
 class Memory:
     def __init__(self, max_memory):
@@ -8,21 +9,27 @@ class Memory:
         self.action = []
         self.reward = []
         self.is_terminal = []
+        self.idx = 0
+
+    def __len__(self):
+        return len(self.state)
 
     def store_transition(self, s, s1, a, r, is_terminal):
-        self.state.append(s)
-        self.new_state.append(s1)
-        self.action.append(a)
-        self.reward.append(r)
-        self.is_terminal.append(is_terminal)
+        if len(self.state) <= self.max_memory:
+            self.state.append(s)
+            self.new_state.append(s1)
+            self.action.append(a)
+            self.reward.append(r)
+            self.is_terminal.append(is_terminal)
+        else:
+            self.state[self.idx] = s
+            self.new_state[self.idx] = s1
+            self.action[self.idx] = a
+            self.reward[self.idx] = r
+            self.is_terminal[self.idx] = is_terminal
+            self.idx = (self.idx + 1) % self.max_memory
         assert len(self.state) == len(self.new_state) == len(self.reward) == len(self.is_terminal) == len(self.action)
 
-        if len(self.state) > self.max_memory:
-            self.state.pop(0)
-            self.new_state.pop(0)
-            self.action.pop(0)
-            self.reward.pop(0)
-            self.is_terminal.pop(0)
 
     def clear_memory(self):
         del self.state[:]
@@ -41,3 +48,6 @@ class Memory:
             reward.append(self.reward[i])
             is_terminal.append(1 - int(self.is_terminal[i]))
         return state, new_state, action, reward, is_terminal
+
+    def update(self, **kwargs):
+        pass

@@ -20,6 +20,10 @@ if __name__ == '__main__':
     TB_LOGGER = Logger(sett.LOGPATH)
     print('Torch Device: %s' % sett.device)
 
+    # Store HYPER in the log
+    for key, value in args._get_kwargs():
+        TB_LOGGER.log_text(tag=str(key), value=[str(value)], step=0)
+
     obs = env.reset()
 
     # Setup Model
@@ -47,6 +51,7 @@ if __name__ == '__main__':
                 max_memory=args.max_memory,
                 max_memory_sub=args.max_memory_sub,
                 conv=conv,
+                per=args.per,
                 n_proc=args.n_proc,
                 gamma_macro=args.gamma_macro,
                 reward_rescale=args.reward_rescale,
@@ -55,7 +60,7 @@ if __name__ == '__main__':
 
     train_steps = 0
     tot_succ = 0
-    episodes_per_epoch = 50
+    episodes_per_epoch = 100
     episode_duration = np.zeros((args.n_proc,), dtype=np.float)
     remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
@@ -107,7 +112,7 @@ if __name__ == '__main__':
         total_x_pos = 0
 
         dqn.set_mode(training=False)
-        n_eval_episodes = 25
+        n_eval_episodes = 50
         tot_reward = np.zeros((args.n_proc,), dtype=np.float)
         cumulative_reward = 0
         counter = 0

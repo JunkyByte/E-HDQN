@@ -14,7 +14,7 @@ class DDQN_Model(nn.Module):
 
         if conv:
             self.features = nn.Sequential(
-                nn.Conv2d(state_size[0], conv_ch, kernel_size=3, stride=3, padding=1),
+                nn.Conv2d(state_size[0], conv_ch, kernel_size=6, stride=4, padding=1),
                 nn.ELU(),
                 nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
                 nn.ELU(),
@@ -31,7 +31,6 @@ class DDQN_Model(nn.Module):
                 #nn.ReLU()
             )
 
-        # If using linear after frame stacks here we will calculate the output dimension by multiplying it by frame stacks
         out_shape = self.features(torch.randn(*((1,) + tuple(state_size[:-1])))).view(-1).size().numel()
         self.lstm_out = nn.LSTM(out_shape, hidd_ch, 1, batch_first=True)
 
@@ -82,7 +81,7 @@ class ICM_Model(nn.Module):
         # Projection
         if conv:
             self.phi = nn.Sequential(
-                nn.Conv2d(self.state_size[0], 32, kernel_size=3, stride=3, padding=1),
+                nn.Conv2d(self.state_size[0], 32, kernel_size=6, stride=4, padding=1),
                 nn.ELU(),
                 nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
                 nn.ELU(),
