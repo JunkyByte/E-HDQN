@@ -25,7 +25,7 @@ args.add_argument('--lr', default=7e-5, type=float, help='Learning rate for agen
 args.add_argument('--eps', default=1.0, type=float, help='Chance of taking random action')
 args.add_argument('--eps_decay', default=3e-5, type=float, help='Decay for macro eps')
 args.add_argument('--eps_sub', default=0.5, type=float, help='Chance of taking random action for sub policy')
-args.add_argument('--eps_sub_decay', default=5e-5, type=float, help='Decay for sub policy eps')
+args.add_argument('--eps_sub_decay', default=6e-5, type=float, help='Decay for sub policy eps')
 args.add_argument('--bs', default=64, type=int, help='Batch size')
 args.add_argument('--train_interval', default=20, type=int, help='Steps of env before training')
 args.add_argument('--train_steps', default=1, type=int, help='Steps of training')

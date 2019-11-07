@@ -242,8 +242,8 @@ class EHDQN:
 
             if self.per:
                 #errors = np.clip((torch.abs(q - y) + fwd_loss + inv_loss).cpu().data.numpy(), -1, 1) # TODO
-                errors = np.clip((torch.abs(q - y) + inv_loss).cpu().data.numpy(), -1, 1) # TODO
-                #errors = np.clip((torch.abs(q - y)).cpu().data.numpy(), -1, 1)
+                #errors = np.clip((torch.abs(q - y) + inv_loss).cpu().data.numpy(), -1, 1) # TODO
+                errors = np.clip((torch.abs(q - y)).cpu().data.numpy(), -1, 1)
                 # update priorities
                 for k in range(self.bs):
                     memory.update(idxs[k], errors[k])

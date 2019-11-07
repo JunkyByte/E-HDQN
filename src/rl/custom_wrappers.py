@@ -139,7 +139,7 @@ class RewardSparse(Wrapper):
                 reward = 1
                 self.max_pos = info['x_pos']
                 self.max_time = info['time']
-            elif not self.very_sparse and abs(info['x_pos'] - self.max_pos) < 20 and self.max_time - info['time'] > 5:
+            elif abs(info['x_pos'] - self.max_pos) < 50 and self.max_time - info['time'] > 10:
                 reward = -1
                 done = True
         else:
