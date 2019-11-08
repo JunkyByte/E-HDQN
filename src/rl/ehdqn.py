@@ -84,7 +84,7 @@ class EHDQN:
         self.macro_target.update_target(self.macro)
         self.macro_memory = Memory(max_memory)
         self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr)
-        self.memory, self.policy, self.target, self.icm, self.policy_opt = [], [], [], [], []
+        self.memory, self.policy, self.target, self.icm, self.policy_opt, self.icm_opt = [], [], [], [], [], []
         for i in range(n_subpolicy):
             # Create sub-policies
             self.policy.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
@@ -96,8 +96,8 @@ class EHDQN:
             self.icm.append(ICM_Model(self.state_dim, self.action_dim, conv).to(sett.device))
 
             # Create sub optimizers
-            params = [self.icm[i].parameters(), self.policy[i].parameters()]
-            self.policy_opt.append(torch.optim.Adam(itertools.chain(*params), lr=self.lr))
+            self.policy_opt.append(torch.optim.Adam(self.policy[i].parameters(), lr=self.lr))
+            self.icm_opt.append(torch.optim.Adam(self.icm[i].parameters(), lr=self.lr * 10))
 
     def save(self, i):
         if not os.path.isdir(sett.SAVEPATH):
@@ -198,6 +198,7 @@ class EHDQN:
             target = self.target[i]
             icm = self.icm[i]
             policy_opt = self.policy_opt[i]
+            icm_opt = self.icm_opt[i]
 
             if self.per:
                 state, new_state, action, reward, is_terminal, idxs, w_is = memory.sample(self.bs)
@@ -236,9 +237,9 @@ class EHDQN:
             inv_loss = cross_entropy(input=a_hat, target=action.detach(), reduction=reduction).mean(-1)
 
             # Total loss
-            inv_loss = (1/self.tau) * (1 - self.beta) * inv_loss
-            fwd_loss = (1/self.tau) * self.beta * fwd_loss * 288
-            loss = policy_loss + inv_loss + fwd_loss
+            inv_loss = (1 - self.beta) * inv_loss
+            fwd_loss = self.beta * fwd_loss * 288
+            loss = self.tau * policy_loss + inv_loss + fwd_loss
 
             if self.per:
                 #errors = np.clip((torch.abs(q - y) + fwd_loss + inv_loss).cpu().data.numpy(), -1, 1) # TODO
@@ -251,10 +252,12 @@ class EHDQN:
                 loss = (loss * torch.FloatTensor(w_is).to(sett.device)).mean()
 
             policy_opt.zero_grad()
+            icm_opt.zero_grad()
             loss.backward()
             for param in policy.parameters():
                 param.grad.data.clamp(-1, 1)
             policy_opt.step()
+            icm_opt.step()
 
             self.target_count[i] += 1
             if self.target_count[i] == self.target_interval:

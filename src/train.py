@@ -60,7 +60,7 @@ if __name__ == '__main__':
 
     train_steps = 0
     tot_succ = 0
-    episodes_per_epoch = 100
+    episodes_per_epoch = 250
     episode_duration = np.zeros((args.n_proc,), dtype=np.float)
     remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
@@ -112,7 +112,7 @@ if __name__ == '__main__':
         total_x_pos = 0
 
         dqn.set_mode(training=False)
-        n_eval_episodes = 50
+        n_eval_episodes = 150
         tot_reward = np.zeros((args.n_proc,), dtype=np.float)
         cumulative_reward = 0
         counter = 0

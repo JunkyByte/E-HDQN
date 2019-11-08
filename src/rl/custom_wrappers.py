@@ -135,7 +135,7 @@ class RewardSparse(Wrapper):
         observation, reward, done, info = self.env.step(action)
         reward = 0
         if not done:
-            if not self.very_sparse and info['x_pos'] - self.max_pos > 200:  # Going forward
+            if not self.very_sparse and info['x_pos'] - self.max_pos > 100:  # Going forward
                 reward = 1
                 self.max_pos = info['x_pos']
                 self.max_time = info['time']
