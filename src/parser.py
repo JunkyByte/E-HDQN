@@ -8,7 +8,7 @@ def boolean_string(s):
     return s == 'True'
 
 
-args.add_argument('--env', default='SuperMarioBros-v0', type=str, help='Environment name')
+args.add_argument('--env', default='SuperMarioBrosRandomStages-v0', type=str, help='Environment name')
 args.add_argument('--sparse', default=1, type=int, help='Sparsity, one in {0, 1, 2}')
 args.add_argument('--ckpt', default='./', type=str, help='Ckpt path')
 args.add_argument('--step', default=-1, type=int, help='Ckpt step value')
@@ -30,8 +30,8 @@ args.add_argument('--bs', default=64, type=int, help='Batch size')
 args.add_argument('--train_interval', default=20, type=int, help='Steps of env before training')
 args.add_argument('--train_steps', default=1, type=int, help='Steps of training')
 args.add_argument('--target_int', default=5000, type=int, help='Steps of training to update target network in dueling arch.')
-args.add_argument('--max_memory', default=25_000, type=int, help='Max macro memory')
-args.add_argument('--max_memory_sub', default=50_000, type=int, help='Max memory sub')
+args.add_argument('--max_memory', default=100_000, type=int, help='Max macro memory')
+args.add_argument('--max_memory_sub', default=200_000, type=int, help='Max memory sub')
 args.add_argument('--size', default=20, type=int, help='Size for DimGrid environment')
 args.add_argument('--tau', default=10, type=float, help='Weight for agent loss')
 args.add_argument('--beta', default=0.2, type=float, help='Weight for fwd vs inv icm loss')
