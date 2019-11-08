@@ -139,11 +139,11 @@ class RewardSparse(Wrapper):
                 reward = 1
                 self.max_pos = info['x_pos']
                 self.max_time = info['time']
-            elif abs(info['x_pos'] - self.max_pos) < 50 and self.max_time - info['time'] > 10:
-                reward = -1
+            elif abs(info['x_pos'] - self.max_pos) < 25 and self.max_time - info['time'] > 20:
+                reward = 0
                 done = True
         else:
-            reward = -1  # End of episode
+            reward = 0  # End of episode
 
         return observation, reward, done, info
 
