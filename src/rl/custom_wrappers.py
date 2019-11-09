@@ -149,4 +149,5 @@ class RewardSparse(Wrapper):
 
     def reset(self, **kwargs):
         self.max_pos = 0
+        self.max_time = 0
         return self.env.reset(**kwargs)

@@ -8,7 +8,7 @@ def boolean_string(s):
     return s == 'True'
 
 
-args.add_argument('--env', default='SuperMarioBrosRandomStages-v1', type=str, help='Environment name')
+args.add_argument('--env', default='SuperMarioBros-v1', type=str, help='Environment name')
 args.add_argument('--sparse', default=1, type=int, help='Sparsity, one in {0, 1, 2}')
 args.add_argument('--ckpt', default='./', type=str, help='Ckpt path')
 args.add_argument('--step', default=-1, type=int, help='Ckpt step value')
