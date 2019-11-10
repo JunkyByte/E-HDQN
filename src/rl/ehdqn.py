@@ -97,7 +97,7 @@ class EHDQN:
 
             # Create sub optimizers
             self.policy_opt.append(torch.optim.Adam(self.policy[i].parameters(), lr=self.lr))
-            self.icm_opt.append(torch.optim.Adam(self.icm[i].parameters(), lr=self.lr * 10))
+            self.icm_opt.append(torch.optim.Adam(self.icm[i].parameters(), lr=1e-3))
 
     def save(self, i):
         if not os.path.isdir(sett.SAVEPATH):
@@ -216,7 +216,7 @@ class EHDQN:
             new_state = torch.tensor(new_state, dtype=torch.float).detach().to(sett.device)
             action = torch.tensor(action).detach().to(sett.device)
             reward = torch.tensor(reward, dtype=torch.float).detach().to(sett.device)
-            is_terminal = torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
+            is_terminal = 1. - torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
 
             # Augment rewards with curiosity
             curiosity_rewards = icm.curiosity_rew(state, new_state, action)
@@ -294,7 +294,7 @@ class EHDQN:
         new_state = torch.tensor(new_state, dtype=torch.float).detach().to(sett.device)
         action = torch.tensor(action).detach().to(sett.device)
         reward = torch.tensor(reward, dtype=torch.float).detach().to(sett.device)
-        is_terminal = torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
+        is_terminal = 1. - torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
 
         q = self.macro.forward(state)[torch.arange(self.bs), action]
         max_action = torch.argmax(self.macro.forward(new_state), dim=1)

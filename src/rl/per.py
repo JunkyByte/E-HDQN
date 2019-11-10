@@ -3,10 +3,10 @@ import numpy as np
 from rl.SumTree import SumTree
 
 class PERMemory:  # stored as ( s, s_, a, r, end ) in SumTree
-    e = 0.01
+    e = 1e-8
     a = 0.6
     beta = 0.4
-    beta_increment_per_sampling = 3e-6
+    beta_increment_per_sampling = 6e-6
 
     def __init__(self, capacity):
         self.tree = SumTree(capacity)
@@ -29,7 +29,7 @@ class PERMemory:  # stored as ( s, s_, a, r, end ) in SumTree
         segment = self.tree.total() / n
         priorities = []
 
-        self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
+        self.beta = np.min([1. - self.e, self.beta + self.beta_increment_per_sampling])
 
         for i in range(n):
             a = segment * i
@@ -37,6 +37,7 @@ class PERMemory:  # stored as ( s, s_, a, r, end ) in SumTree
 
             s = random.uniform(a, b)
             (idx, p, data) = self.tree.get(s)
+
             priorities.append(p)
             batch.append(data)
             idxs.append(idx)

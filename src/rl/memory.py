@@ -46,7 +46,7 @@ class Memory:
             new_state.append(self.new_state[i])
             action.append(self.action[i])
             reward.append(self.reward[i])
-            is_terminal.append(1 - int(self.is_terminal[i]))
+            is_terminal.append(int(self.is_terminal[i]))
         return state, new_state, action, reward, is_terminal
 
     def update(self, **kwargs):
