@@ -3,7 +3,7 @@ import torch
 from rl.model import DDQN_Model, ICM_Model
 from rl.memory import Memory
 from rl.per import PERMemory
-from torch.nn.functional import mse_loss, cross_entropy, smooth_l1_loss
+from torch.nn.functional import mse_loss, cross_entropy, smooth_l1_loss, softmax
 import settings as sett
 import itertools
 import os
@@ -118,7 +118,7 @@ class EHDQN:
 
         for i, sel_policy, curr_time in zip(range(self.n_proc), self.selected_policy, self.curr_time):
             if sel_policy is None or curr_time == self.max_time:
-                if not sel_policy is None and not deterministic:
+                if sel_policy is not None and not deterministic:
                     # Store non terminal macro transition
                     #self.macro_reward[i] /= self.max_time
                     self.macro_memory.store_transition(self.macro_state[i], obs[i], sel_policy, self.macro_reward[i], False)
@@ -234,7 +234,7 @@ class EHDQN:
             phi_true = icm.phi_state(new_state)
             fwd_loss = mse_loss(input=phi_hat, target=phi_true.detach(), reduction=reduction).mean(-1)
             a_hat = icm.inverse_pred(state, new_state)
-            inv_loss = cross_entropy(input=a_hat, target=action.detach(), reduction=reduction).mean(-1)
+            inv_loss = cross_entropy(input=a_hat, target=action.detach(), reduction=reduction)
 
             # Total loss
             inv_loss = (1 - self.beta) * inv_loss
@@ -242,12 +242,14 @@ class EHDQN:
             loss = self.tau * policy_loss + inv_loss + fwd_loss
 
             if self.per:
-                #errors = np.clip((torch.abs(q - y) + fwd_loss + inv_loss).cpu().data.numpy(), -1, 1) # TODO
-                #errors = np.clip((torch.abs(q - y) + inv_loss).cpu().data.numpy(), -1, 1) # TODO
-                errors = np.clip((torch.abs(q - y)).cpu().data.numpy(), -1, 1)
+                error = np.clip((torch.abs(q - y)).cpu().data.numpy(), 0, 0.8) # TODO
+                inv_prob = (1 - softmax(a_hat, dim=1)[torch.arange(self.bs), action]) / 5
+                curiosity_error = torch.abs(inv_prob).cpu().data.numpy()
+                total_error = error + curiosity_error
+
                 # update priorities
                 for k in range(self.bs):
-                    memory.update(idxs[k], errors[k])
+                    memory.update(idxs[k], total_error[k])
 
                 loss = (loss * torch.FloatTensor(w_is).to(sett.device)).mean()
 
@@ -273,7 +275,9 @@ class EHDQN:
                 self.logger.log_scalar(tag='Q values %i' % i, value=q.mean().cpu().data.numpy())
                 self.logger.log_scalar(tag='Target Boltz %i' % i, value=y.mean().cpu().data.numpy())
                 if self.per:
-                    self.logger.log_scalar(tag='PER Error %i' % i, value=errors.mean())
+                    self.logger.log_scalar(tag='PER Error %i' % i, value=total_error.mean())
+                    self.logger.log_scalar(tag='PER Error Policy %i' % i, value=error.mean())
+                    self.logger.log_scalar(tag='PER Error Curiosity %i' % i, value=curiosity_error.mean())
 
         # Reduce sub eps
         self.eps_sub = self.eps_sub * self.eps_sub_decay

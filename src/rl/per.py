@@ -6,7 +6,7 @@ class PERMemory:  # stored as ( s, s_, a, r, end ) in SumTree
     e = 1e-8
     a = 0.6
     beta = 0.4
-    beta_increment_per_sampling = 6e-6
+    beta_increment_per_sampling = 8e-6
 
     def __init__(self, capacity):
         self.tree = SumTree(capacity)

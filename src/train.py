@@ -15,6 +15,7 @@ if __name__ == '__main__':
     env = create_environment(args.env, n_env=args.n_proc, size=args.size, sparse=args.sparse)
     eval_env = create_environment(args.env, n_env=args.n_proc, seed=42, size=args.size, sparse=args.sparse)
     is_mario = True if 'Mario' in args.env else False
+    norm_input = True if is_mario else False
 
     # Logger
     TB_LOGGER = Logger(sett.LOGPATH)
@@ -55,12 +56,13 @@ if __name__ == '__main__':
                 n_proc=args.n_proc,
                 gamma_macro=args.gamma_macro,
                 reward_rescale=args.reward_rescale,
-                logger=TB_LOGGER
+                logger=TB_LOGGER,
+                norm_input=norm_input
                 )
 
     train_steps = 0
     tot_succ = 0
-    episodes_per_epoch = 250
+    episodes_per_epoch = 200
     episode_duration = np.zeros((args.n_proc,), dtype=np.float)
     remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
@@ -112,7 +114,7 @@ if __name__ == '__main__':
         total_x_pos = 0
 
         dqn.set_mode(training=False)
-        n_eval_episodes = 150
+        n_eval_episodes = 100
         tot_reward = np.zeros((args.n_proc,), dtype=np.float)
         cumulative_reward = 0
         counter = 0
