@@ -120,7 +120,6 @@ class EHDQN:
             if sel_policy is None or curr_time == self.max_time:
                 if sel_policy is not None and not deterministic:
                     # Store non terminal macro transition
-                    #self.macro_reward[i] /= self.max_time
                     self.macro_memory.store_transition(self.macro_state[i], obs[i], sel_policy, self.macro_reward[i], False)
                     self.macro_reward[i] = 0
 
@@ -176,7 +175,6 @@ class EHDQN:
 
             # Store terminal macro transition
             if is_terminal[i]:
-                #self.macro_reward[i] /= self.max_time
                 self.macro_memory.store_transition(self.macro_state[i], s1[i], sel_policy, self.macro_reward[i], is_terminal[i])
                 self.macro_reward[i] = 0
                 self.selected_policy[i] = None
@@ -320,13 +318,10 @@ class EHDQN:
             self.logger.log_scalar(tag='Macro Loss', value=loss.cpu().detach().numpy())
             self.logger.log_scalar(tag='Sub Eps', value=self.eps_sub)
             self.logger.log_scalar(tag='Macro Eps', value=self.eps)
-            summed = sum(self.counter_macro)
-            values = self.counter_macro / max(1, summed)
+            values = self.counter_macro / max(1, sum(self.counter_macro))
             self.logger.log_text(tag='Macro Policy Actions Text', value=[str(v) for v in values],
                                  step=self.logger.step)
             self.logger.log_histogram(tag='Macro Policy Actions Hist', values=values,
                                       step=self.logger.step, bins=self.n_subpolicy)
-            if summed >= 20000:
-                self.counter_macro[:] = 0
             self.logger.log_scalar(tag='Macro Q values', value=q.cpu().detach().numpy().mean())
             self.logger.log_scalar(tag='Marcro Target Boltz', value=y.cpu().detach().numpy().mean())

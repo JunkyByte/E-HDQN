@@ -62,7 +62,7 @@ if __name__ == '__main__':
 
     train_steps = 0
     tot_succ = 0
-    episodes_per_epoch = 200
+    episodes_per_epoch = args.episodes_per_epoch
     episode_duration = np.zeros((args.n_proc,), dtype=np.float)
     remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
@@ -74,6 +74,7 @@ if __name__ == '__main__':
         obs = env.reset()
 
         i = 0
+        n_info = 0
         while True:
             action = dqn.act(obs)
             obs_new, r, is_terminal, info = env.step(action)
@@ -93,6 +94,7 @@ if __name__ == '__main__':
                     if is_mario:
                         try:
                             total_x_pos += info[i]['x_pos']
+                            n_info += 1
                         except IndexError:
                             pass
                     TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration[j])
@@ -108,7 +110,7 @@ if __name__ == '__main__':
                 break
 
         if is_mario:
-            TB_LOGGER.log_scalar(tag='Mean End X', value=total_x_pos / i)
+            TB_LOGGER.log_scalar(tag='Mean End X', value=total_x_pos / n_info)
         TB_LOGGER.log_scalar(tag='Train Reward:', value=tot_succ / i)
         tot_succ = 0
         total_x_pos = 0

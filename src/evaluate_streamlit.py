@@ -15,13 +15,15 @@ if __name__ == '__main__':
     image = st.empty()
 
     nskip = 6
-    if 'Mario' in args.env:
+    is_mario = True if 'Mario' in args.env else False
+    norm_input = True if is_mario else False
+    if is_mario:
         world = st.selectbox('World', list(range(1, 9)))
-        env = 'SuperMarioBros-%s-1-v0' % world
+        env = 'SuperMarioBros-%s-1-v1' % world
         nskip = st.selectbox('NSkip', [6] + list(range(1, 12)))
 
     # Setup env
-    env = create_environment(env, n_env=1, size=args.size, nskip=nskip, sparse=args.sparse)
+    env = create_environment(env, n_env=1, seed=42, size=args.size, nskip=nskip, sparse=args.sparse)
 
     obs = env.reset()
 
@@ -52,7 +54,8 @@ if __name__ == '__main__':
                 max_memory_sub=args.max_memory_sub,
                 conv=conv,
                 reward_rescale=args.reward_rescale,
-                gamma_macro=args.gamma_macro
+                gamma_macro=args.gamma_macro,
+                norm_input=norm_input
                 )
 
     # Load model

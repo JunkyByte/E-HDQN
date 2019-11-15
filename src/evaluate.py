@@ -10,6 +10,7 @@ logging.basicConfig(format='%(asctime)s %(levelname)s: %(message)s', level=loggi
 
 if __name__ == '__main__':
     args = parser.args.parse_args()
+    raise NotImplementedError
 
     # Setup env
     env = create_environment(args.env, n_env=1, size=args.size, sparse=args.sparse)
