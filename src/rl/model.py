@@ -6,18 +6,20 @@ import settings as sett
 
 
 class DDQN_Model(nn.Module):
-    def __init__(self, state_size, action_size, conv, hidd_ch=256, conv_ch=32):
+    def __init__(self, state_size, action_size, conv, macro=None, hidd_ch=256, conv_ch=32):
         super(DDQN_Model, self).__init__()
         self.action_size = action_size
         self.hidd_ch = hidd_ch
         state_size = np.array(state_size)[[3, 1, 2, 0]]
+        if macro is None:
+            self.backbone = nn.Sequential(nn.Conv2d(state_size[0], conv_ch, kernel_size=6, stride=4, padding=1),
+                                          nn.ELU(),
+                                          nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
+                                          nn.ELU()
+                                          )
 
         if conv:
             self.features = nn.Sequential(
-                nn.Conv2d(state_size[0], conv_ch, kernel_size=6, stride=4, padding=1),
-                nn.ELU(),
-                nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
-                nn.ELU(),
                 nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
                 nn.ELU(),
                 nn.Conv2d(conv_ch, conv_ch, kernel_size=3, stride=2, padding=1),
@@ -31,7 +33,10 @@ class DDQN_Model(nn.Module):
                 #nn.ReLU()
             )
 
-        out_shape = self.features(torch.randn(*((1,) + tuple(state_size[:-1])))).view(-1).size().numel()
+        if macro is None:
+            out_shape = self.features(self.backbone(torch.randn(*((1,) + tuple(state_size[:-1]))))).view(-1).size().numel()
+        else:
+            out_shape = self.features(macro.backbone(torch.randn(*((1,) + tuple(state_size[:-1]))))).view(-1).size().numel()
         self.lstm_out = nn.LSTM(out_shape, hidd_ch, 1, batch_first=True)
 
         self.advantage = nn.Sequential(
@@ -42,12 +47,13 @@ class DDQN_Model(nn.Module):
             nn.Linear(hidd_ch, 1)
         )
 
-    def forward(self, obs):
+    def forward(self, obs, macro=None):
         if obs.ndimension() == 4:
             obs = obs[None]
         obs = obs.float().transpose(2, 4)
         stack = obs.shape[1]
-        x = torch.cat([self.features(obs[:, i])[:, None] for i in range(stack)], dim=1)
+        backbone = self.backbone if macro is None else macro.backbone
+        x = torch.cat([self.features(backbone(obs[:, i]))[:, None] for i in range(stack)], dim=1)
         x = x.view(x.size(0), stack, -1)
 
         h0 = torch.zeros(1, x.size(0), self.hidd_ch).to(sett.device)
@@ -59,9 +65,9 @@ class DDQN_Model(nn.Module):
         value = self.value(x)
         return value + (adv - adv.mean(-1, keepdim=True))
 
-    def act(self, state, eps):
+    def act(self, state, eps, backbone=None):
         if np.random.random() > eps:
-            q = self.forward(state)
+            q = self.forward(state, backbone)
             action = torch.argmax(q, dim=-1).cpu().data.numpy()
         else:
             action = np.random.randint(self.action_size, size=1 if len(state.shape) == 1 else state.shape[0])

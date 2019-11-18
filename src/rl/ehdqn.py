@@ -79,16 +79,16 @@ class EHDQN:
             memory = Memory
 
         # Create Policies / ICM modules / Memories
-        self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch).to(sett.device)
-        self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch).to(sett.device)
+        self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
+        self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
         self.macro_target.update_target(self.macro)
         self.macro_memory = Memory(max_memory)
         self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr)
         self.memory, self.policy, self.target, self.icm, self.policy_opt, self.icm_opt = [], [], [], [], [], []
         for i in range(n_subpolicy):
             # Create sub-policies
-            self.policy.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
-            self.target.append(DDQN_Model(state_dim, action_dim, conv).to(sett.device))
+            self.policy.append(DDQN_Model(state_dim, action_dim, conv, macro=self.macro).to(sett.device))
+            self.target.append(DDQN_Model(state_dim, action_dim, conv, macro=self.macro).to(sett.device))
             self.target[-1].update_target(self.policy[-1])
             self.memory.append(memory(max_memory_sub))
 
@@ -96,8 +96,13 @@ class EHDQN:
             self.icm.append(ICM_Model(self.state_dim, self.action_dim, conv).to(sett.device))
 
             # Create sub optimizers
-            self.policy_opt.append(torch.optim.Adam(self.policy[i].parameters(), lr=self.lr))
+            parameters = itertools.chain(self.policy[i].parameters(), self.macro.backbone.parameters())
+            self.policy_opt.append(torch.optim.Adam(parameters, lr=self.lr))
             self.icm_opt.append(torch.optim.Adam(self.icm[i].parameters(), lr=1e-3))
+
+        # Send macro to correct device
+        self.macro = self.macro.to(sett.device)
+        self.macro_target = self.macro_target.to(sett.device)
 
     def save(self, i):
         if not os.path.isdir(sett.SAVEPATH):
@@ -137,7 +142,7 @@ class EHDQN:
         sel_indices = [(self.selected_policy == i).nonzero()[0] for i in sel_pol]
         action = -np.ones((self.n_proc,), dtype=np.int)
         for policy_idx, indices in zip(sel_pol, sel_indices):
-            action[indices] = self.policy[policy_idx].act(x[indices], eps=eps)
+            action[indices] = self.policy[policy_idx].act(x[indices], eps=eps, backbone=self.macro)
 
         self.curr_time += 1  # Is a vector
         return action
@@ -222,9 +227,9 @@ class EHDQN:
             #reward = self.reward_rescale(reward)  # TODO
 
             # Policy loss
-            q = policy.forward(state)[torch.arange(self.bs), action]
-            max_action = torch.argmax(policy.forward(new_state), dim=1)
-            y = reward + self.gamma * target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
+            q = policy.forward(state, macro=self.macro)[torch.arange(self.bs), action]
+            max_action = torch.argmax(policy.forward(new_state, macro=self.macro), dim=1)
+            y = reward + self.gamma * target.forward(new_state, macro=self.macro)[torch.arange(self.bs), max_action] * is_terminal
             policy_loss = smooth_l1_loss(input=q, target=y.detach(), reduction=reduction).mean(-1)
 
             # ICM Loss
