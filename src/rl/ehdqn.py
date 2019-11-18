@@ -82,7 +82,7 @@ class EHDQN:
         self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
         self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
         self.macro_target.update_target(self.macro)
-        self.macro_memory = Memory(max_memory)
+        self.macro_memory = memory(max_memory)
         self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr)
         self.memory, self.policy, self.target, self.icm, self.policy_opt, self.icm_opt = [], [], [], [], [], []
         for i in range(n_subpolicy):
@@ -224,7 +224,6 @@ class EHDQN:
             # Augment rewards with curiosity
             curiosity_rewards = icm.curiosity_rew(state, new_state, action)
             reward = (1 - 0.01) * reward + 0.01 * self.lam * curiosity_rewards
-            #reward = self.reward_rescale(reward)  # TODO
 
             # Policy loss
             q = policy.forward(state, macro=self.macro)[torch.arange(self.bs), action]
@@ -245,7 +244,7 @@ class EHDQN:
             loss = self.tau * policy_loss + inv_loss + fwd_loss
 
             if self.per:
-                error = np.clip((torch.abs(q - y)).cpu().data.numpy(), 0, 0.8) # TODO
+                error = np.clip((torch.abs(q - y)).cpu().data.numpy(), 0, 0.8)
                 inv_prob = (1 - softmax(a_hat, dim=1)[torch.arange(self.bs), action]) / 5
                 curiosity_error = torch.abs(inv_prob).cpu().data.numpy()
                 total_error = error + curiosity_error
@@ -292,7 +291,14 @@ class EHDQN:
         # Reduce eps
         self.eps = self.eps * self.eps_decay
 
-        state, new_state, action, reward, is_terminal = self.macro_memory.sample(self.bs)
+        if self.per:
+            state, new_state, action, reward, is_terminal, idxs, w_is = self.macro_memory.sample(self.bs)
+            reduction = 'none'
+            self.logger.log_scalar(tag='Beta PER %i' % i, value=self.macro_memory.beta)
+        else:
+            state, new_state, action, reward, is_terminal = self.macro_memory.sample(self.bs)
+            reduction = 'mean'
+
         if self.norm_input:
             state = np.array(state, dtype=np.float) / 255
             new_state = np.array(new_state, dtype=np.float) / 255
@@ -306,7 +312,16 @@ class EHDQN:
         q = self.macro.forward(state)[torch.arange(self.bs), action]
         max_action = torch.argmax(self.macro.forward(new_state), dim=1)
         y = reward + self.gamma_macro * self.macro_target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
-        loss = smooth_l1_loss(input=q, target=y.detach())
+        loss = smooth_l1_loss(input=q, target=y.detach(), reduction=reduction).mean(-1)
+
+        if self.per:
+            error = np.clip((torch.abs(q - y)).cpu().data.numpy(), 0, 1.0)
+
+            # update priorities
+            for k in range(self.bs):
+                memory.update(idxs[k], error[k])
+
+            loss = (loss * torch.FloatTensor(w_is).to(sett.device)).mean()
 
         self.macro_opt.zero_grad()
         loss.backward()
