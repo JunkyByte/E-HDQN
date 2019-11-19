@@ -58,6 +58,7 @@ class EHDQN:
         # ICM parameters
         self.beta = beta
         self.lam = lam
+        self.psi = 1
 
         self.n_proc = n_proc
         self.selected_policy = np.full((self.n_proc,), fill_value=None)
@@ -82,7 +83,7 @@ class EHDQN:
         self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
         self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
         self.macro_target.update_target(self.macro)
-        self.macro_memory = memory(max_memory)
+        self.macro_memory = Memory(max_memory)
         self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr)
         self.memory, self.policy, self.target, self.icm, self.policy_opt, self.icm_opt = [], [], [], [], [], []
         for i in range(n_subpolicy):
@@ -291,14 +292,7 @@ class EHDQN:
         # Reduce eps
         self.eps = self.eps * self.eps_decay
 
-        if self.per:
-            state, new_state, action, reward, is_terminal, idxs, w_is = self.macro_memory.sample(self.bs)
-            reduction = 'none'
-            self.logger.log_scalar(tag='Beta PER %i' % i, value=self.macro_memory.beta)
-        else:
-            state, new_state, action, reward, is_terminal = self.macro_memory.sample(self.bs)
-            reduction = 'mean'
-
+        state, new_state, action, reward, is_terminal = self.macro_memory.sample(self.bs)
         if self.norm_input:
             state = np.array(state, dtype=np.float) / 255
             new_state = np.array(new_state, dtype=np.float) / 255
@@ -307,21 +301,15 @@ class EHDQN:
         new_state = torch.tensor(new_state, dtype=torch.float).detach().to(sett.device)
         action = torch.tensor(action).detach().to(sett.device)
         reward = torch.tensor(reward, dtype=torch.float).detach().to(sett.device)
+        reward = reward + self.psi * self.lam * 0.01 * curiosity_rewards
+        self.psi *= 1 - 1e-4
+        self.logger.log_scalar(tag='psi', value=self.psi)
         is_terminal = 1. - torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
 
         q = self.macro.forward(state)[torch.arange(self.bs), action]
         max_action = torch.argmax(self.macro.forward(new_state), dim=1)
         y = reward + self.gamma_macro * self.macro_target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
-        loss = smooth_l1_loss(input=q, target=y.detach(), reduction=reduction).mean(-1)
-
-        if self.per:
-            error = np.clip((torch.abs(q - y)).cpu().data.numpy(), 0, 1.0)
-
-            # update priorities
-            for k in range(self.bs):
-                memory.update(idxs[k], error[k])
-
-            loss = (loss * torch.FloatTensor(w_is).to(sett.device)).mean()
+        loss = smooth_l1_loss(input=q, target=y.detach())
 
         self.macro_opt.zero_grad()
         loss.backward()
