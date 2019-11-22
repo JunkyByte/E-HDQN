@@ -48,5 +48,10 @@ def make_env(env_id, rank, seed=0, **kwargs):
                 elif kwargs['sparse'] == 2:
                     env = RewardSparse(env, very_sparse=True)
             env.seed(seed + rank)
+        else: # assume atari
+            env = gym.make(env_id)
+            env = AtariPreprocessing(env, frame_skip=4)
+            env = FixGrayScale(env)
+            env = FrameStack(env, num_stack=4)
         return env
     return _init

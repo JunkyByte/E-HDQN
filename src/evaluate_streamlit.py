@@ -15,11 +15,13 @@ if __name__ == '__main__':
     image = st.empty()
 
     nskip = 6
-    is_mario = True if 'Mario' in args.env and 'Random' not in args.env else False
+    is_mario = True if 'Mario' in args.env else False
     norm_input = True if is_mario else False
+    env = args.env
     if is_mario:
-        world = st.selectbox('World', list(range(1, 9)))
-        env = 'SuperMarioBros-%s-1-v1' % world
+        if not 'Random' in args.env:
+            world = st.selectbox('World', list(range(1, 9)))
+            env = 'SuperMarioBros-%s-1-v1' % world
         nskip = st.selectbox('NSkip', [6] + list(range(1, 12)))
 
     # Setup env

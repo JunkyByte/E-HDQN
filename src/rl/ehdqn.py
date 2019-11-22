@@ -58,7 +58,6 @@ class EHDQN:
         # ICM parameters
         self.beta = beta
         self.lam = lam
-        self.psi = 1
 
         self.n_proc = n_proc
         self.selected_policy = np.full((self.n_proc,), fill_value=None)
@@ -72,6 +71,7 @@ class EHDQN:
         self.macro_reward = np.zeros((self.n_proc,), dtype=np.float)
         self.target_count = np.zeros((self.n_subpolicy,), dtype=np.int)
         self.counter_macro = np.zeros((self.n_subpolicy,), dtype=np.int)
+        self.counter_policies = np.zeros((self.n_subpolicy, self.action_dim), dtype=np.int)
         self.macro_count = 0
 
         if self.per:
@@ -80,16 +80,16 @@ class EHDQN:
             memory = Memory
 
         # Create Policies / ICM modules / Memories
-        self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
-        self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch)
+        self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch=hidd_ch)
+        self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch=hidd_ch)
         self.macro_target.update_target(self.macro)
         self.macro_memory = Memory(max_memory)
-        self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr)
+        self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr * 4 if self.per else self.lr)
         self.memory, self.policy, self.target, self.icm, self.policy_opt, self.icm_opt = [], [], [], [], [], []
         for i in range(n_subpolicy):
             # Create sub-policies
-            self.policy.append(DDQN_Model(state_dim, action_dim, conv, macro=self.macro).to(sett.device))
-            self.target.append(DDQN_Model(state_dim, action_dim, conv, macro=self.macro).to(sett.device))
+            self.policy.append(DDQN_Model(state_dim, action_dim, conv=conv, hidd_ch=hidd_ch, macro=self.macro).to(sett.device))
+            self.target.append(DDQN_Model(state_dim, action_dim, conv=conv, hidd_ch=hidd_ch, macro=self.macro).to(sett.device))
             self.target[-1].update_target(self.policy[-1])
             self.memory.append(memory(max_memory_sub))
 
@@ -144,6 +144,7 @@ class EHDQN:
         action = -np.ones((self.n_proc,), dtype=np.int)
         for policy_idx, indices in zip(sel_pol, sel_indices):
             action[indices] = self.policy[policy_idx].act(x[indices], eps=eps, backbone=self.macro)
+            self.counter_policies[policy_idx, action[indices]] += 1
 
         self.curr_time += 1  # Is a vector
         return action
@@ -193,7 +194,11 @@ class EHDQN:
 
     def _update(self):
         # First train each sub policy
+        j = np.random.randint(self.n_subpolicy)
+        self.macro.backbone.requires_grad_(False)
         for i in range(self.n_subpolicy):
+            if i == j:
+                self.macro.backbone.requires_grad_(True)
             memory = self.memory[i]
             if len(memory) < self.bs * 10:
                 continue
@@ -264,6 +269,9 @@ class EHDQN:
             policy_opt.step()
             icm_opt.step()
 
+            if i == j:
+                self.macro.backbone.requires_grad_(False)
+
             self.target_count[i] += 1
             if self.target_count[i] == self.target_interval:
                 self.target_count[i] = 0
@@ -277,6 +285,9 @@ class EHDQN:
                 self.logger.log_scalar(tag='Mean Curiosity Reward %i' % i, value=curiosity_rewards.mean().cpu().data.numpy())
                 self.logger.log_scalar(tag='Q values %i' % i, value=q.mean().cpu().data.numpy())
                 self.logger.log_scalar(tag='Target Boltz %i' % i, value=y.mean().cpu().data.numpy())
+                actions = self.counter_policies[i] / max(1, self.counter_policies[i].sum())
+                self.logger.log_text(tag='Policy actions %i Text' %i, value=[str(v) for v in actions],
+                                     step=self.logger.step)
                 if self.per:
                     self.logger.log_scalar(tag='PER Error %i' % i, value=total_error.mean())
                     self.logger.log_scalar(tag='PER Error Policy %i' % i, value=error.mean())
@@ -301,9 +312,6 @@ class EHDQN:
         new_state = torch.tensor(new_state, dtype=torch.float).detach().to(sett.device)
         action = torch.tensor(action).detach().to(sett.device)
         reward = torch.tensor(reward, dtype=torch.float).detach().to(sett.device)
-        reward = reward + self.psi * self.lam * 0.01 * curiosity_rewards
-        self.psi *= 1 - 1e-4
-        self.logger.log_scalar(tag='psi', value=self.psi)
         is_terminal = 1. - torch.tensor(is_terminal, dtype=torch.float).detach().to(sett.device)
 
         q = self.macro.forward(state)[torch.arange(self.bs), action]
