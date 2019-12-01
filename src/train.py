@@ -1,4 +1,5 @@
 from rl.ehdqn import EHDQN
+from rl.dqn import DQN
 from environment_manager import create_environment
 import logging
 import numpy as np
@@ -15,7 +16,7 @@ if __name__ == '__main__':
     env = create_environment(args.env, n_env=args.n_proc, size=args.size, sparse=args.sparse)
     eval_env = create_environment(args.env, n_env=args.n_proc, seed=42, size=args.size, sparse=args.sparse)
     is_mario = True if 'Mario' in args.env else False
-    norm_input = True if is_mario else False
+    norm_input = True
 
     # Logger
     TB_LOGGER = Logger(sett.LOGPATH)
@@ -32,33 +33,57 @@ if __name__ == '__main__':
     n_state = env.observation_space.n if env.observation_space.shape == () else env.observation_space.shape
 
     conv = True if isinstance(n_state, tuple) else False
-    dqn = EHDQN(state_dim=n_state,
-                tau=args.tau,
-                action_dim=n_actions,
-                gamma=args.gamma,
-                n_subpolicy=args.n_subpolicy,
-                max_time=args.max_time,
-                hidd_ch=args.hidd_ch,
-                lam=args.lam,
-                lr=args.lr,
-                eps=args.eps,
-                eps_decay=args.eps_decay,
-                eps_sub=args.eps_sub,
-                eps_sub_decay=args.eps_sub_decay,
-                beta=args.beta,
-                bs=args.bs,
-                target_interval=args.target_int,
-                train_steps=args.train_steps,
-                max_memory=args.max_memory,
-                max_memory_sub=args.max_memory_sub,
-                conv=conv,
-                per=args.per,
-                n_proc=args.n_proc,
-                gamma_macro=args.gamma_macro,
-                reward_rescale=args.reward_rescale,
-                logger=TB_LOGGER,
-                norm_input=norm_input
-                )
+
+    if args.use_baseline:
+        dqn = DQN(state_dim=n_state,
+                  tau=args.tau,
+                  action_dim=n_actions,
+                  gamma=args.gamma,
+                  hidd_ch=args.hidd_ch,
+                  lam=args.lam,
+                  lr=args.lr,
+                  eps_sub=args.eps_sub,
+                  eps_sub_decay=args.eps_sub_decay,
+                  beta=args.beta,
+                  bs=args.bs,
+                  target_interval=args.target_int,
+                  train_steps=args.train_steps,
+                  max_memory=args.max_memory,
+                  conv=conv,
+                  per=args.per,
+                  n_proc=args.n_proc,
+                  reward_rescale=args.reward_rescale,
+                  logger=TB_LOGGER,
+                  norm_input=norm_input
+                  )
+    else:
+        dqn = EHDQN(state_dim=n_state,
+                    tau=args.tau,
+                    action_dim=n_actions,
+                    gamma=args.gamma,
+                    n_subpolicy=args.n_subpolicy,
+                    max_time=args.max_time,
+                    hidd_ch=args.hidd_ch,
+                    lam=args.lam,
+                    lr=args.lr,
+                    eps=args.eps,
+                    eps_decay=args.eps_decay,
+                    eps_sub=args.eps_sub,
+                    eps_sub_decay=args.eps_sub_decay,
+                    beta=args.beta,
+                    bs=args.bs,
+                    target_interval=args.target_int,
+                    train_steps=args.train_steps,
+                    max_memory=args.max_memory,
+                    max_memory_sub=args.max_memory_sub,
+                    conv=conv,
+                    per=args.per,
+                    n_proc=args.n_proc,
+                    gamma_macro=args.gamma_macro,
+                    reward_rescale=args.reward_rescale,
+                    logger=TB_LOGGER,
+                    norm_input=norm_input
+                    )
 
     train_steps = 0
     tot_succ = 0
@@ -81,6 +106,7 @@ if __name__ == '__main__':
 
             tot_succ += sum(r)
             dqn.store_transition(obs, obs_new, action, r, is_terminal)
+            #env.render()
 
             train_steps += 1
             if train_steps % max(1, args.train_interval // args.n_proc) == 0 and train_steps > 0:
@@ -141,5 +167,6 @@ if __name__ == '__main__':
         TB_LOGGER.log_scalar(tag='Eval Reward', value=eval_succ)
         dqn.set_mode(training=True)
 
-        # Save ckpt
-        dqn.save(total_episodes)
+        # Save ckpts
+        if not args.use_baseline:
+            dqn.save(total_episodes)

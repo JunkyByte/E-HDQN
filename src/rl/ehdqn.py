@@ -80,8 +80,8 @@ class EHDQN:
             memory = Memory
 
         # Create Policies / ICM modules / Memories
-        self.macro = DDQN_Model(state_dim, n_subpolicy, hidd_ch=hidd_ch)
-        self.macro_target = DDQN_Model(state_dim, n_subpolicy, hidd_ch=hidd_ch)
+        self.macro = DDQN_Model(state_dim, n_subpolicy, conv=conv, hidd_ch=hidd_ch)
+        self.macro_target = DDQN_Model(state_dim, n_subpolicy, conv=conv, hidd_ch=hidd_ch)
         self.macro_target.update_target(self.macro)
         self.macro_memory = Memory(max_memory)
         self.macro_opt = torch.optim.Adam(self.macro.parameters(), lr=self.lr * 4 if self.per else self.lr)
@@ -97,8 +97,7 @@ class EHDQN:
             self.icm.append(ICM_Model(self.state_dim, self.action_dim, conv).to(sett.device))
 
             # Create sub optimizers
-            parameters = itertools.chain(self.policy[i].parameters(), self.macro.backbone.parameters())
-            self.policy_opt.append(torch.optim.Adam(parameters, lr=self.lr))
+            self.policy_opt.append(torch.optim.Adam(self.policy[i].parameters(), lr=self.lr))
             self.icm_opt.append(torch.optim.Adam(self.icm[i].parameters(), lr=1e-3))
 
         # Send macro to correct device
@@ -194,13 +193,11 @@ class EHDQN:
 
     def _update(self):
         # First train each sub policy
-        j = np.random.randint(self.n_subpolicy)
-        self.macro.backbone.requires_grad_(False)
+        self.macro_opt.zero_grad()  # To allow cumulative gradients on backbone part
+
         for i in range(self.n_subpolicy):
-            if i == j:
-                self.macro.backbone.requires_grad_(True)
             memory = self.memory[i]
-            if len(memory) < self.bs * 10:
+            if len(memory) < self.bs * 100:
                 continue
 
             policy = self.policy[i]
@@ -269,9 +266,6 @@ class EHDQN:
             policy_opt.step()
             icm_opt.step()
 
-            if i == j:
-                self.macro.backbone.requires_grad_(False)
-
             self.target_count[i] += 1
             if self.target_count[i] == self.target_interval:
                 self.target_count[i] = 0
@@ -297,7 +291,7 @@ class EHDQN:
         self.eps_sub = self.eps_sub * self.eps_sub_decay
 
         # Train Macro policy
-        if len(self.macro_memory) < self.bs * 10:
+        if len(self.macro_memory) < self.bs * 100:
             return
 
         # Reduce eps
@@ -319,7 +313,6 @@ class EHDQN:
         y = reward + self.gamma_macro * self.macro_target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
         loss = smooth_l1_loss(input=q, target=y.detach())
 
-        self.macro_opt.zero_grad()
         loss.backward()
         for param in self.macro.parameters():
             param.grad.data.clamp(-1, 1)

@@ -27,6 +27,10 @@ class TimeLimit(Wrapper):
 class FixGrayScale(Wrapper):
     def __init__(self, env):
         super(FixGrayScale, self).__init__(env)
+        if len(self.observation_space.shape) == 2:
+            low = self.observation_space.low[..., np.newaxis]
+            high = self.observation_space.high[..., np.newaxis]
+            self.observation_space = Box(low=low, high=high, dtype=self.observation_space.dtype)
 
     def step(self, action):
         observation, reward, done, info = self.env.step(action)

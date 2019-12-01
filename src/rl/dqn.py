@@ -143,9 +143,9 @@ class DQN:
         reward = (1 - 0.01) * reward + 0.01 * self.lam * curiosity_rewards
 
         # Policy loss
-        q = policy.forward(state, macro=self.macro)[torch.arange(self.bs), action]
-        max_action = torch.argmax(policy.forward(new_state, macro=self.macro), dim=1)
-        y = reward + self.gamma * target.forward(new_state, macro=self.macro)[torch.arange(self.bs), max_action] * is_terminal
+        q = policy.forward(state)[torch.arange(self.bs), action]
+        max_action = torch.argmax(policy.forward(new_state), dim=1)
+        y = reward + self.gamma * target.forward(new_state)[torch.arange(self.bs), max_action] * is_terminal
         policy_loss = smooth_l1_loss(input=q, target=y.detach(), reduction=reduction).mean(-1)
 
         # ICM Loss

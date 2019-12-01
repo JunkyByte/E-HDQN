@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     nskip = 6
     is_mario = True if 'Mario' in args.env else False
-    norm_input = True if is_mario else False
+    norm_input = True
     env = args.env
     if is_mario:
         if not 'Random' in args.env:
