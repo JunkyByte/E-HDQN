@@ -168,5 +168,4 @@ if __name__ == '__main__':
         dqn.set_mode(training=True)
 
         # Save ckpts
-        if not args.use_baseline:
-            dqn.save(total_episodes)
+        dqn.save(total_episodes)

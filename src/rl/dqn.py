@@ -96,6 +96,14 @@ class DQN:
                 reward *= self.reward_rescale
         return reward
 
+    def save(self, i):
+        if not os.path.isdir(sett.SAVEPATH):
+            os.makedirs(sett.SAVEPATH)
+        torch.save(self.agent.state_dict(), os.path.join(sett.SAVEPATH, 'agent_%s.pth' % i))
+
+    def load(self, path, i):
+        self.agent.load_state_dict(torch.load(os.path.join(path, 'agent_%s.pth' % i), map_location=sett.device))
+
     def store_transition(self, s, s1, a, reward, is_terminal):
         reward = self.process_reward(reward)
         for i in range(len(s)):
