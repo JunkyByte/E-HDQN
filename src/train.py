@@ -105,7 +105,9 @@ if __name__ == '__main__':
             obs_new, r, is_terminal, info = env.step(action)
 
             tot_succ += sum(r)
-            dqn.store_transition(obs, obs_new, action, r, is_terminal)
+
+            obs_store = [s if not is_terminal[k] else info[k]['terminal_observation'] for k, s in enumerate(obs_new)]
+            dqn.store_transition(obs, obs_store, action, r, is_terminal)
             #env.render()
 
             train_steps += 1
@@ -125,8 +127,6 @@ if __name__ == '__main__':
                             pass
                     TB_LOGGER.log_scalar(tag='Episode Duration', value=episode_duration[j])
                     episode_duration[j] = 0
-                    remotes[j].send(('reset', None))
-                    obs[j] = remotes[j].recv()
                     i += 1
                     total_episodes += 1
                     if total_episodes % 5 == 0:
@@ -156,8 +156,6 @@ if __name__ == '__main__':
 
             for j, terminal in enumerate(is_terminal):
                 if terminal:
-                    remotes[j].send(('reset', None))
-                    obs[j] = remotes[j].recv()
                     cumulative_reward += tot_reward[j]
                     tot_reward[j] = 0
                     counter += 1

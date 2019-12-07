@@ -98,8 +98,7 @@ if __name__ == '__main__':
 
     while True:
         tot_reward = 0
-        obs = env.reset()
-        for i in range(0, np.random.randint(30)):
+        for i in range(0, np.random.randint(10)):
             obs, _, _, _ = env.step([env.action_space.sample()])
 
         while True:
