@@ -110,11 +110,13 @@ class EHDQN:
         torch.save(self.macro.state_dict(), os.path.join(sett.SAVEPATH, 'Macro_%s.pth' % i))
         for sub in range(self.n_subpolicy):
             torch.save(self.policy[sub].state_dict(), os.path.join(sett.SAVEPATH, 'Sub_%s_%s.pth' % (sub, i)))
+            torch.save(self.icm[sub].state_dict(), os.path.join(sett.SAVEPATH, 'Icm_%s_%s.pth' % (sub, i)))
 
     def load(self, path, i):
         self.macro.load_state_dict(torch.load(os.path.join(path, 'Macro_%s.pth' % i), map_location=sett.device))
         for sub in range(self.n_subpolicy):
             self.policy[sub].load_state_dict(torch.load(os.path.join(path, 'Sub_%s_%s.pth' % (sub, i)), map_location=sett.device))
+            self.icm[sub].load_state_dict(torch.load(os.path.join(path, 'Icm_%s_%s.pth' % (sub, i)), map_location=sett.device))
 
     def act(self, obs, deterministic=False):
         x = torch.from_numpy(obs).float().to(sett.device)

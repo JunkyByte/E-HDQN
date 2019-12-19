@@ -85,11 +85,19 @@ if __name__ == '__main__':
                     norm_input=norm_input
                     )
 
+    # Load ckpt to fine-tune if specified
+    if args.ckpt != parser.args.get_default('ckpt'):
+        print(args.ckpt, parser.args.get_default('ckpt'))
+        logging.info('Fine tuning mode has been specified, loading ckpt %s' % args.ckpt)
+        dqn.eps_sub = 0.25
+        if hasattr(dqn, 'eps'):
+            dqn.eps = 0
+        dqn.load(args.ckpt, i=args.step)
+
     train_steps = 0
     tot_succ = 0
     episodes_per_epoch = args.episodes_per_epoch
     episode_duration = np.zeros((args.n_proc,), dtype=np.float)
-    remotes = env._get_target_remotes(range(args.n_proc))
     total_episodes = 0
     total_x_pos = 0
     i = 0

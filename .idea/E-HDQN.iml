@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/ckpts" />
     </content>
-    <orderEntry type="jdk" jdkName="Remote Python 3.6.5 (sftp://adryw@1.tcp.eu.ngrok.io:22946/home/adryw/miniconda3/bin/python)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.7" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TestRunnerService">
